@@ -131,7 +131,7 @@ A focus `id` is a hash of `path + title`. A refresh that keeps the same focus ar
 - On large stacks (more than 8 layers), these must fit the existing compact layout and the hover-linking matrix.
 
 **Review page** (see UX pass below for the chosen layout)
-- Brief card: one guide line with the tier, rank, reason and skim files, plus "N questions for the author". The questions open in a popover, each with "Ask in a comment", which creates a pending top-level draft for that layer (drafts only, as everywhere else).
+- Brief card: one guide line with the tier, rank, reason and skim files, plus "N questions for the author". The questions open in a popover, each with "Ask in a comment", which adds "Question for the author: …" to the layer's pending review summary (the review body, posted only when you submit; the app has no separate top-level draft).
 - Sidebar: a Focus checklist between the stack rail and the files.
 - Diff: a label row at the start of each focus range (title, why, Tick), plus an amber gutter bar along the range, distinct from finding markers.
 - File list: a "skim" tag on skim files; filters gain "Hide skim files".
