@@ -5,7 +5,8 @@ import { GitHubSource, rateLimit } from "../src/lib/github";
 
 const token = process.env.GH_TOKEN;
 if (!token) throw new Error("Set GH_TOKEN");
-const org = process.argv[2] ?? "acme";
+const org = process.argv[2];
+if (!org) throw new Error("Usage: bun scripts/smoke.ts <org> [owner/repo]");
 const gh = new GitHubSource(token);
 
 const t0 = Date.now();
