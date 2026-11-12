@@ -127,3 +127,10 @@ textarea.input { resize: vertical; line-height: 1.5; }
 }
 .crumbs { display: flex; gap: 6px; color: var(--muted); align-items: center; flex-wrap: wrap; }
 .crumbs .here { color: var(--text); }
+
+/* A single-line toolbar: children keep their size except those marked .shrink */
+.row-nowrap { display: flex; align-items: center; flex-wrap: nowrap; white-space: nowrap; }
+.row-nowrap > * { flex-shrink: 0; }
+.row-nowrap > .shrink { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chips-scroll { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
+.chips-scroll > * { flex-shrink: 0; }

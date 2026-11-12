@@ -6,7 +6,9 @@ import { useStack } from "../app/queries";
 import type { FileChange, Layer, RepoRef, Stack } from "../lib/model";
 import { repoKey } from "../lib/model";
 import { prKey, reviewStore } from "../lib/reviewStore";
-import { resumeLayer, reviewedCount } from "../lib/stacks";
+import { formatRanges, progressLabel, resumeLayer } from "../lib/stacks";
+import { splitConventional, summarize } from "../lib/markdown";
+import { useSession } from "../app/session";
 import { CHECK_STYLE, ChecksLabel, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing, Spinner, timeAgo } from "../ui/bits";
 
 export function Overview({ repo, stackKey }: { repo: RepoRef; stackKey: string }) {
@@ -33,6 +35,8 @@ export function Overview({ repo, stackKey }: { repo: RepoRef; stackKey: string }
 function OverviewBody({ stack }: { stack: Stack }) {
   const { go } = useNav();
   const source = useSource();
+  const { viewer } = useSession();
+  const isMine = stack.author.toLowerCase() === (viewer?.login ?? "").toLowerCase();
   const resume = resumeLayer(stack);
   const open = stack.layers.filter((l) => l.pr.state === "OPEN");
   const add = stack.layers.reduce((n, l) => n + l.pr.additions, 0);
@@ -59,19 +63,21 @@ function OverviewBody({ stack }: { stack: Stack }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }} className="muted">
             <span><strong style={{ color: "var(--text)" }}>{stack.layers.length}</strong> layers ({open.length} open)</span>
             <span className="mono"><span className="add">+{add}</span> <span className="del">−{del}</span></span>
-            <span><strong style={{ color: "var(--text)" }}>{reviewedCount(stack)}</strong> of {stack.layers.length} reviewed by you</span>
+            <span>{progressLabel(stack, viewer?.login ?? "").split(" · resume")[0]}{isMine ? "" : " by you"}</span>
             <ChecksLabel state={stack.checks} />
           </div>
         </div>
         <button className="btn btn-primary" style={{ padding: "9px 16px" }} onClick={() => openReview(resume)}>
-          {reviewedCount(stack) ? "Resume" : "Start"} review at layer {resume.index} →
+          {isMine ? `Open layer ${resume.index}` : resume.index > 1 ? `Resume review at layer ${resume.index}` : "Start review at layer 1"} →
         </button>
       </section>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
         <section aria-label="Layers" style={{ flex: "1 1 400px", maxWidth: 560, display: "flex", flexDirection: "column", gap: 8 }}>
-          <div className="muted" style={{ fontSize: 12, paddingLeft: 4 }}>based on <span className="mono">{stack.baseRef}</span> · review from layer 1 upward</div>
-          {stack.layers.map((l) => <LayerCard key={l.pr.number} layer={l} stack={stack} current={l === resume} files={filesByLayer[l.index - 1]} onOpen={() => openReview(l)} />)}
+          <div className="muted" style={{ fontSize: 12, paddingLeft: 4 }}>based on <span className="mono">{stack.baseRef}</span> · review from layer 1 upward{stack.layers.length > 8 ? " · hover a layer for its summary" : ""}</div>
+          <div className={stack.layers.length > 8 ? "card" : undefined} style={stack.layers.length > 8 ? { padding: 4, display: "flex", flexDirection: "column", gap: 1 } : { display: "contents" }}>
+            {stack.layers.map((l) => <LayerCard key={l.pr.number} layer={l} stack={stack} current={l === resume} files={filesByLayer[l.index - 1]} compact={stack.layers.length > 8} onOpen={() => openReview(l)} />)}
+          </div>
         </section>
 
         <div style={{ flex: "999 1 560px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -87,18 +93,39 @@ function OverviewBody({ stack }: { stack: Stack }) {
   );
 }
 
-function LayerCard({ layer, stack, current, files, onOpen }: { layer: Layer; stack: Stack; current: boolean; files?: FileChange[]; onOpen: () => void }) {
+function LayerCard({ layer, stack, current, files, compact, onOpen }: { layer: Layer; stack: Stack; current: boolean; files?: FileChange[]; compact: boolean; onOpen: () => void }) {
   const s = LAYER_STYLE[layer.mine];
+  const c = CHECK_STYLE[layer.pr.checks];
   const brief = reviewStore.get(prKey(stack.repo, layer.pr.number)).brief;
-  const firstPara = (brief?.summary ?? layer.pr.body).split(/\n\s*\n/)[0].replace(/[#*_`>]/g, "").trim();
+  const firstPara = brief?.summary ?? summarize(layer.pr.body, 220);
   const viewed = files?.filter((f) => f.viewed).length;
+  const title = splitConventional(layer.pr.title);
+  if (compact) {
+    return (
+      <button
+        onClick={onOpen}
+        title={firstPara || layer.pr.title}
+        style={{ display: "flex", gap: 10, alignItems: "center", padding: "7px 10px", borderRadius: 8, textAlign: "left", border: `1px solid ${current ? "var(--accent-soft-bd)" : "transparent"}`, background: current ? "#161d28" : "transparent" }}
+      >
+        <LayerRing layer={layer} size={22} />
+        <span className="mono muted" style={{ fontSize: 12, flex: "0 0 auto" }}>#{layer.pr.number}</span>
+        <span style={{ flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {title.tag && <span className="faint mono" style={{ fontSize: 11, marginRight: 6 }}>{title.tag}</span>}
+          <span style={{ fontWeight: 500 }}>{title.text}</span>
+        </span>
+        <span style={{ flex: "0 0 auto", fontSize: 12, color: c.color }} title={c.word}>{c.glyph}</span>
+        <span className="muted mono" style={{ flex: "0 0 auto", minWidth: 64, fontSize: 11, textAlign: "right", whiteSpace: "nowrap" }}>{viewed != null ? `${viewed}/` : ""}{layer.pr.changedFiles} files</span>
+      </button>
+    );
+  }
   return (
     <button onClick={onOpen} className="card" style={{ display: "flex", gap: 12, padding: "12px 14px", textAlign: "left", borderColor: current ? "var(--accent-soft-bd)" : undefined, background: current ? "#161d28" : undefined }}>
       <LayerRing layer={layer} size={28} />
       <span style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
         <span style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
           <span className="mono muted" style={{ fontSize: 12 }}>#{layer.pr.number}</span>
-          <strong style={{ fontWeight: 600 }}>{layer.pr.title}</strong>
+          {title.tag && <span className="faint mono" style={{ fontSize: 11 }}>{title.tag}</span>}
+          <strong style={{ fontWeight: 600 }}>{title.text}</strong>
           {layer.pr.isDraft && <span className="pill" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>draft</span>}
         </span>
         {firstPara && <span className="prose" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{firstPara}{brief ? <span className="muted"> · {brief.agent}</span> : null}</span>}
@@ -133,7 +160,7 @@ function Matrix({ stack, files, onOpen }: { stack: Stack; files: FileChange[][];
       <div style={{ minWidth: 220 + cols * (tooMany ? 38 : 70), padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, gap: 12, flexWrap: "wrap" }}>
           <strong>Where the stack touches the code</strong>
-          <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · ◆ open threads appear in review</span>
+          <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · double-click to open</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: grid, gap: 4, fontSize: 12 }} className="muted">
           <span>File ({rows.length})</span>
@@ -141,7 +168,10 @@ function Matrix({ stack, files, onOpen }: { stack: Stack; files: FileChange[][];
         </div>
         {rows.slice(0, 200).map((path) => (
           <div key={path} style={{ display: "grid", gridTemplateColumns: grid, gap: 4, alignItems: "center" }}>
-            <span className="mono" title={path} style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "rtl", textAlign: "left", color: sel?.path === path ? "var(--accent-soft-fg)" : "var(--text-2)" }}>{path}</span>
+            <span className="mono" title={path} style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", gap: 6, minWidth: 0 }}>
+              <span style={{ flex: "0 0 auto", color: sel?.path === path ? "var(--accent-soft-fg)" : "var(--text-2)" }}>{path.split("/").pop()}</span>
+              <span className="faint" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{path.split("/").slice(0, -1).join("/")}</span>
+            </span>
             {stack.layers.map((l, i) => {
               const f = files[i].find((x) => x.path === path);
               if (!f) return <span key={l.pr.number} />;
@@ -182,15 +212,15 @@ function CrossLayerNotes({ stack, files }: { stack: Stack; files: FileChange[][]
   files.forEach((list, i) => list.forEach((f) => churn.set(f.path, [...(churn.get(f.path) ?? []), i + 1])));
   const hot = [...churn.entries()].filter(([, ls]) => ls.length >= 3).sort((a, b) => b[1].length - a[1].length).slice(0, 3);
   for (const [path, ls] of hot) {
-    notes.push({ title: `${path.split("/").pop()} changes in ${ls.length} layers`, body: `Layers ${ls.join(", ")} all edit ${path}. Review those diffs back to back; findings on an early layer may be superseded later.`, tone: "plain" });
+    notes.push({ title: `${path.split("/").pop()} changes in ${ls.length} layers`, body: `Layers ${formatRanges(ls)} all edit this file. Review those diffs back to back; findings on an early layer may be superseded later.`, tone: "plain" });
   }
   const failing = stack.layers.filter((l) => l.pr.state === "OPEN" && l.pr.checks === "fail");
   if (failing.length) {
     const lowest = failing[0];
-    notes.push({ title: `Checks fail from layer ${lowest.index} up`, body: failing.length > 1 ? `Layers ${failing.map((l) => l.index).join(", ")} fail. Start with #${lowest.pr.number}; later failures may be the same cause.` : `#${lowest.pr.number} has failing checks.`, tone: "bad" });
+    notes.push({ title: `Checks fail from layer ${lowest.index} up`, body: failing.length > 1 ? `Layers ${formatRanges(failing.map((l) => l.index))} fail. Start with #${lowest.pr.number}; later failures may be the same cause.` : `#${lowest.pr.number} has failing checks.`, tone: "bad" });
   }
   const stale = stack.layers.filter((l) => l.mine === "stale");
-  if (stale.length) notes.push({ title: `${stale.length} ${stale.length === 1 ? "layer has" : "layers have"} new commits since your review`, body: `Layer ${stale.map((l) => l.index).join(", ")}. Use “Since my review” to see only what changed.`, tone: "warn" });
+  if (stale.length) notes.push({ title: `${stale.length} ${stale.length === 1 ? "layer has" : "layers have"} new commits since your review`, body: `Layer ${formatRanges(stale.map((l) => l.index))}. Use “Since my review” to see only what changed.`, tone: "warn" });
   if (!notes.length) return null;
   const tone = { bad: ["var(--bad-bd)", "var(--bad-bg)"], warn: ["var(--warn-bd)", "var(--warn-bg)"], plain: ["#252a31", "#14181e"] };
   return (

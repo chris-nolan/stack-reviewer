@@ -45,10 +45,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const demo = new URLSearchParams(window.location.search).has("demo");
+    const params = new URLSearchParams(window.location.search);
+    const demo = params.has("demo");
     (async () => {
       try {
         if (demo) return await activate(new FixtureSource());
+        if (import.meta.env.DEV && params.has("snapshot")) {
+          const { SnapshotSource } = await import("../lib/snapshot");
+          return await activate(await SnapshotSource.load());
+        }
         const token = await getToken();
         if (token) return await activate(new GitHubSource(token));
       } catch (e) {

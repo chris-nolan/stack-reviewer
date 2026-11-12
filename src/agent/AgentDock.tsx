@@ -158,7 +158,7 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
 
 function DockShell({ title, onClose, children }: { title: React.ReactNode; onClose: () => void; children: React.ReactNode }) {
   return (
-    <aside aria-label="Agent" style={{ flex: "1 1 320px", maxWidth: 380, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--border)", background: "var(--chrome)", minHeight: 0, height: "100%" }}>
+    <aside aria-label="Agent" style={{ flex: "0 0 340px", width: 340, minWidth: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--border)", background: "var(--chrome)", minHeight: 0, height: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
         <span style={{ flex: "1 1 auto", display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>{title}</span>
         <button className="btn btn-icon" onClick={onClose} aria-label="Close agent panel">✕</button>

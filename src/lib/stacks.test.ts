@@ -121,3 +121,29 @@ describe("changeStarts", () => {
     expect(changeStarts(rows)).toEqual([2, 5]);
   });
 });
+
+import { summarize, splitConventional } from "./markdown";
+import { formatRanges, progressLabel } from "./stacks";
+describe("summaries and labels", () => {
+  it("strips gh-stack boilerplate and markdown", () => {
+    const body = "Part 1 of 5 in [stack #12](https://github.com/o/r/stack/12), which replaces #9 with small reviewable steps. This PR is the bottom of the stack, based on `main`.\n\n## What this changes\n\nThe **TokenBucket** class refills on a [fixed](https://x) schedule, so the limiter now refills lazily on each take.";
+    expect(summarize(body)).toBe("The TokenBucket class refills on a fixed schedule, so the limiter now refills lazily on each take.");
+  });
+  it("keeps normal descriptions", () => {
+    expect(summarize("Adds a TokenBucket class.\n\nMore.")).toBe("Adds a TokenBucket class.");
+  });
+  it("splits conventional commit titles", () => {
+    expect(splitConventional("feat(limiter): add TokenBucket")).toEqual({ tag: "feat(limiter)", text: "add TokenBucket" });
+    expect(splitConventional("Plain title")).toEqual({ tag: null, text: "Plain title" });
+  });
+  it("formats layer ranges", () => {
+    expect(formatRanges([6, 7, 8, 9, 2, 4, 5])).toBe("2, 4–9");
+    expect(formatRanges([1, 2])).toBe("1, 2");
+  });
+  it("shows reviewer state on my own stacks", () => {
+    const prs = [pr(1, "main", "a", { author: "me", reviewDecision: "APPROVED" }), pr(2, "a", "b", { author: "me" })];
+    const s = buildStacks(repo, prs, [], "me")[0];
+    expect(s.layers.map((l) => l.mine)).toEqual(["approved", "waiting"]);
+    expect(progressLabel(s, "me")).toBe("1 of 2 approved");
+  });
+});

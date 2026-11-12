@@ -6,7 +6,7 @@ import { useAgents } from "../agent/useAgents";
 import type { RepoRef, Stack } from "../lib/model";
 import { repoKey } from "../lib/model";
 import { local } from "../lib/platform";
-import { resumeLayer, reviewedCount } from "../lib/stacks";
+import { progressLabel } from "../lib/stacks";
 import { AgentDot, ChecksLabel, ErrorBox, LayerStrip, LogoMark, Spinner, timeAgo } from "../ui/bits";
 
 export function Home() {
@@ -41,7 +41,7 @@ export function Home() {
       <aside style={{ flex: "1 1 240px", maxWidth: 260, display: "flex", flexDirection: "column", borderRight: "1px solid var(--border)", background: "var(--chrome)", minHeight: "100%" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 16px 12px", fontWeight: 600 }}>
           <LogoMark /> Stack Reviewer
-          {source?.kind === "fixtures" && <span className="pill" style={{ background: "var(--agent-bg)", color: "var(--agent)" }}>demo</span>}
+          {source?.label && <span className="pill" style={{ background: "var(--agent-bg)", color: "var(--agent)" }}>{source.label}</span>}
         </div>
         <div style={{ padding: "0 12px 12px" }}>
           <label htmlFor="org" className="label" style={{ display: "block", margin: "0 4px 6px" }}>Organisation</label>
@@ -159,18 +159,17 @@ function InboxList({ section, filter, inbox }: { section: HomeSection; filter: s
       ) : (
         <StackList stacks={list} />
       )}
-      <p className="muted" style={{ fontSize: 12 }}>Layers: ✓ reviewed · ● your turn · ! new commits since your review · ✕ changes requested · ⇡ merged · blank: not reviewed</p>
+      <p className="muted" style={{ fontSize: 12 }}>Layers: ✓ reviewed · ● your turn · ! new commits since your review · ✕ changes requested · … waiting for reviewers (your PRs) · ⇡ merged · blank: not reviewed</p>
     </>
   );
 }
 
 export function StackList({ stacks }: { stacks: Stack[] }) {
   const { go } = useNav();
+  const { viewer } = useSession();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {stacks.map((s) => {
-        const resume = resumeLayer(s);
-        const done = reviewedCount(s);
         return (
           <button
             key={`${repoKey(s.repo)}#${s.key}`}
@@ -185,7 +184,7 @@ export function StackList({ stacks }: { stacks: Stack[] }) {
             </span>
             <span style={{ flex: "0 1 240px", display: "flex", flexDirection: "column", gap: 6, minWidth: 120 }}>
               <LayerStrip layers={s.layers} />
-              <span className="muted" style={{ fontSize: 12 }}>{done} of {s.layers.length} reviewed · resume at #{resume.pr.number}</span>
+              <span className="muted" style={{ fontSize: 12 }}>{progressLabel(s, viewer?.login ?? "")}</span>
             </span>
             <span style={{ flex: "0 0 150px", fontSize: 12 }}>
               <ChecksLabel state={s.checks} />

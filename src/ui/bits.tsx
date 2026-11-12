@@ -6,6 +6,7 @@ export const LAYER_STYLE: Record<MyLayerState, { glyph: string; word: string; fg
   changes: { glyph: "✕", word: "You requested changes", fg: "var(--bad-fg)", bg: "var(--del-bg)", bd: "var(--bad-bd)", ring: "var(--bad)", fill: "transparent" },
   stale: { glyph: "!", word: "New commits since your review", fg: "var(--warn-fg)", bg: "#2f2914", bd: "var(--warn-bd)", ring: "var(--warn)", fill: "transparent" },
   turn: { glyph: "●", word: "Your review requested", fg: "var(--accent-soft-fg)", bg: "#1b2636", bd: "var(--accent-soft-bd)", ring: "var(--accent)", fill: "transparent" },
+  waiting: { glyph: "…", word: "Waiting for reviewers", fg: "#b9c7d8", bg: "#1a2029", bd: "#2b3442", ring: "#6b7a8f", fill: "transparent" },
   todo: { glyph: "", word: "Not reviewed", fg: "var(--muted)", bg: "var(--surface-2)", bd: "#252a31", ring: "#4a525d", fill: "transparent" },
   merged: { glyph: "⇡", word: "Merged", fg: "#c9b6ff", bg: "#1d1830", bd: "#3a2f5c", ring: "#a48bff", fill: "#a48bff" },
   closed: { glyph: "–", word: "Closed", fg: "var(--muted)", bg: "var(--surface-2)", bd: "#252a31", ring: "#4a525d", fill: "transparent" },

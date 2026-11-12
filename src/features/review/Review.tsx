@@ -7,6 +7,7 @@ import { AgentDock } from "../../agent/AgentDock";
 import { reviewBridge, type FindingInput } from "../../agent/bridge";
 import { changeStarts, commentableLines, parsePatch } from "../../lib/diff";
 import { failureExcerpt } from "../../lib/logs";
+import { plainText, splitConventional, stripStackBoilerplate, summarize } from "../../lib/markdown";
 import type { CheckRun, FileChange, Layer, RepoRef, ReviewEvent, Stack } from "../../lib/model";
 import { repoKey } from "../../lib/model";
 import { local } from "../../lib/platform";
@@ -35,6 +36,16 @@ export function Review(p: Props) {
 const isTestish = (p: string) => /(^|\/)(test|tests|__tests__|spec)\/|\.(test|spec)\.[a-z]+$|_test\.(go|py|rs)$/i.test(p);
 const isDocish = (p: string) => /\.(md|mdx|txt|rst)$|(^|\/)docs?\//i.test(p);
 
+function useWindowWidth(): number {
+  const [w, setW] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const on = () => setW(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return w;
+}
+
 function readingOrder(files: FileChange[], preferred?: string[]): FileChange[] {
   const byPath = new Map(files.map((f) => [f.path, f]));
   const first = (preferred ?? []).map((p) => byPath.get(p)).filter((f): f is FileChange => !!f);
@@ -56,8 +67,12 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
 
   const [mode, setMode] = useState<"layer" | "since">("layer");
   const [layout, setLayout] = useState<"unified" | "split">(() => local.get("layout", "unified"));
-  const [railOpen, setRailOpen] = useState(() => local.get("railOpen", true));
+  const [railPref, setRailOpen] = useState(() => local.get("railOpen", true));
+  const width = useWindowWidth();
   const [dockOpen, setDockOpen] = useState(() => local.get("dockOpen", true));
+  // On narrow windows the agent panel and the full sidebar don't both fit beside a diff.
+  const [railForced, setRailForced] = useState(false);
+  const railOpen = railPref && (railForced || !(dockOpen && width < 1280));
   const [briefOpen, setBriefOpen] = useState(() => local.get("briefOpen", true));
   const [finishOpen, setFinishOpen] = useState(false);
   const [checksOpen, setChecksOpen] = useState<number | null | false>(false);
@@ -66,7 +81,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const [composerLine, setComposerLine] = useState<number | null>(null);
 
   useEffect(() => local.set("layout", layout), [layout]);
-  useEffect(() => local.set("railOpen", railOpen), [railOpen]);
+  useEffect(() => local.set("railOpen", railPref), [railPref]);
   useEffect(() => local.set("dockOpen", dockOpen), [dockOpen]);
   useEffect(() => local.set("briefOpen", briefOpen), [briefOpen]);
   useEffect(() => rememberRecent({ repo, stackKey: stack.key, title: stack.title, layer: layer.index, at: new Date().toISOString() }), [repo, stack.key, stack.title, layer.index]);
@@ -94,6 +109,10 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const threadsHere = (threadsQ.data ?? []).filter((t) => t.path === current?.path);
   const draftsHere = review.drafts.filter((d) => d.path === current?.path);
   const openFindings = review.findings.filter((f) => f.status === "open");
+  const notesHere = findingsHere.length + threadsHere.length + draftsHere.filter((d) => d.source === "me").length;
+  const [marginPinned, setMarginPinned] = useState(() => local.get("marginPinned", false));
+  useEffect(() => local.set("marginPinned", marginPinned), [marginPinned]);
+  const showMargin = notesHere > 0 || marginPinned || composerLine != null;
   const failingChecks = (checksQ.data ?? []).filter((c) => checkRunState(c) === "fail");
   const prev = stack.layers[layer.index - 2] ?? null;
   const next = stack.layers[layer.index] ?? null;
@@ -238,7 +257,15 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     else go({ name: "overview", repo, stackKey: stack.key });
   };
 
-  const summaryText = (review.brief?.summary ?? layer.pr.body).trim();
+  const summaryText = review.brief?.summary ?? summarize(layer.pr.body, 600);
+  const fullBody = useMemo(() => plainText(stripStackBoilerplate(layer.pr.body)).replace(/\n{3,}/g, "\n\n").trim(), [layer.pr.body]);
+  const [showBody, setShowBody] = useState(false);
+  const manyLayers = stack.layers.length > 8;
+  const railLayersRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    railLayersRef.current?.querySelector("[data-current]")?.scrollIntoView({ block: "nearest" });
+  }, [railOpen, layer.index]);
+  const titleParts = splitConventional(layer.pr.title);
 
   return (
     <div className="app">
@@ -254,23 +281,35 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
 
       <div style={{ flex: "1 1 auto", display: "flex", minHeight: 0 }}>
         {railOpen ? (
-          <aside aria-label="Stack and files" className="scroll" style={{ flex: "0 0 256px", borderRight: "1px solid var(--border)", background: "var(--chrome)", display: "flex", flexDirection: "column" }}>
+          <aside aria-label="Stack and files" style={{ flex: "0 0 256px", width: 256, minWidth: 0, overflow: "hidden", borderRight: "1px solid var(--border)", background: "var(--chrome)", display: "flex", flexDirection: "column", minHeight: 0 }}>
             <div style={{ display: "flex", alignItems: "center", padding: "12px 12px 6px 14px" }}>
-              <span className="label" style={{ flex: "1 1 auto" }}>Stack · {stack.layers.length} layers</span>
-              <button className="btn btn-icon" onClick={() => setRailOpen(false)} aria-label="Collapse sidebar">‹</button>
+              <span className="label" style={{ flex: "1 1 auto" }}>Stack · layer {layer.index} of {stack.layers.length}</span>
+              <button className="btn btn-icon" onClick={() => { setRailOpen(false); setRailForced(false); }} aria-label="Collapse sidebar">‹</button>
             </div>
-            <div className="mono faint" style={{ padding: "0 8px 4px 22px", fontSize: 12 }}>{stack.baseRef}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 8px 10px" }}>
+            <div ref={railLayersRef} className="scroll" style={{ flex: "0 1 auto", maxHeight: manyLayers ? "38%" : undefined, display: "flex", flexDirection: "column", gap: manyLayers ? 0 : 2, padding: "0 8px 8px" }}>
+              <div className="mono faint" style={{ padding: "0 0 4px 14px", fontSize: 12 }}>{stack.baseRef}</div>
               {stack.layers.map((l) => {
                 const sel = l === layer;
                 const s = LAYER_STYLE[l.mine];
+                const t = splitConventional(l.pr.title);
                 return (
-                  <button key={l.pr.number} onClick={() => goLayer(l)} aria-current={sel ? "true" : undefined} style={{ display: "flex", gap: 10, alignItems: "center", textAlign: "left", padding: "7px 8px", borderRadius: 8, border: `1px solid ${sel ? "var(--accent-soft-bd)" : "transparent"}`, background: sel ? "var(--accent-soft-bg)" : "transparent" }}>
-                    <LayerRing layer={l} size={22} />
-                    <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                      <span style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.pr.title}</span>
-                      <span style={{ fontSize: 12, color: s.fg }}>#{l.pr.number} · {s.word}</span>
-                    </span>
+                  <button
+                    key={l.pr.number}
+                    data-current={sel || undefined}
+                    onClick={() => goLayer(l)}
+                    aria-current={sel ? "true" : undefined}
+                    title={`#${l.pr.number} ${l.pr.title} — ${s.word}`}
+                    style={{ display: "flex", gap: manyLayers ? 8 : 10, alignItems: "center", textAlign: "left", padding: manyLayers ? "4px 6px" : "7px 8px", borderRadius: 8, border: `1px solid ${sel ? "var(--accent-soft-bd)" : "transparent"}`, background: sel ? "var(--accent-soft-bg)" : "transparent", flex: "0 0 auto" }}
+                  >
+                    <LayerRing layer={l} size={manyLayers ? 20 : 22} />
+                    {manyLayers ? (
+                      <span style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: sel ? 600 : 400, color: sel ? "var(--text)" : "var(--text-2)" }}>{t.text}</span>
+                    ) : (
+                      <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                        <span style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.text}</span>
+                        <span style={{ fontSize: 12, color: s.fg }}>#{l.pr.number} · {s.word}</span>
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -279,7 +318,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
               <span className="label">Files · reading order</span>
               <span className="muted" style={{ fontSize: 12 }}>{viewedCount}/{layerFiles.length}</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px 12px" }}>
+            <div className="scroll" style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", gap: 1, padding: "0 8px 12px" }}>
               {filesQ.isPending && <span style={{ padding: 8 }}><Spinner /></span>}
               {ordered.map((f) => {
                 const sel = f === current;
@@ -302,7 +341,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
           </aside>
         ) : (
           <aside aria-label="Stack" style={{ flex: "0 0 52px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "12px 0", borderRight: "1px solid var(--border)", background: "var(--chrome)", overflow: "auto" }}>
-            <button className="btn btn-icon" onClick={() => setRailOpen(true)} aria-label="Expand sidebar">›</button>
+            <button className="btn btn-icon" onClick={() => { setRailOpen(true); setRailForced(true); }} aria-label="Expand sidebar">›</button>
             {stack.layers.map((l) => (
               <button key={l.pr.number} onClick={() => goLayer(l)} aria-label={`Layer ${l.index}: ${l.pr.title}`} style={{ border: 0, background: "transparent", padding: 0 }}>
                 <LayerRing layer={l} size={28} outline={l === layer} />
@@ -326,24 +365,31 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
               <div className="spacer" />
               <button className="btn btn-sm" aria-expanded={briefOpen} onClick={() => setBriefOpen((o) => !o)}>{briefOpen ? "Collapse" : "Expand"}</button>
             </div>
-            <h1 style={{ margin: 0, fontSize: 19, fontWeight: 600 }}>{layer.pr.title}</h1>
+            <h1 style={{ margin: 0, fontSize: 19, fontWeight: 600 }}>
+              {titleParts.tag && <span className="mono faint" style={{ fontSize: 13, fontWeight: 400, marginRight: 8 }}>{titleParts.tag}</span>}
+              {titleParts.text}
+            </h1>
             {briefOpen && (
               <>
-                {summaryText ? (
-                  <p className="prose" style={{ margin: 0, maxWidth: 900, whiteSpace: "pre-wrap", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                {showBody ? (
+                  <div className="prose scroll" style={{ maxWidth: 900, maxHeight: 260, whiteSpace: "pre-wrap", padding: "8px 10px", borderRadius: 8, background: "var(--surface-2)" }}>{fullBody}</div>
+                ) : summaryText ? (
+                  <p className="prose" style={{ margin: 0, maxWidth: 900, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {summaryText}
                     {review.brief && <span className="muted"> · summary by the agent</span>}
                   </p>
                 ) : <p className="muted" style={{ margin: 0 }}>No description. Ask the agent to review this layer for a summary.</p>}
-                {ordered.length > 1 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                {fullBody.length > summaryText.length + 20 && (
+                  <button className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setShowBody((v) => !v)}>{showBody ? "Show summary" : "Full description"}</button>
+                )}
+                {ordered.length > 1 && !railOpen && (
+                  <div className="chips-scroll">
                     <span className="muted" style={{ marginRight: 4 }}>{review.brief?.readingOrder.length ? "Suggested reading order" : "Reading order"}</span>
-                    {ordered.slice(0, 12).map((f, i) => (
+                    {ordered.map((f, i) => (
                       <button key={f.path} className="btn btn-chip mono" onClick={() => selectFile(f.path)} style={{ borderColor: f === current ? "var(--accent-soft-bd)" : undefined, background: f === current ? "var(--accent-soft-bg)" : undefined, fontSize: 12 }}>
                         <span className="muted">{i + 1}</span> {f.path.split("/").pop()} {viewedByPath.get(f.path) && <span style={{ color: "var(--accent)" }}>✓</span>}
                       </button>
                     ))}
-                    {ordered.length > 12 && <span className="muted">+{ordered.length - 12} more</span>}
                   </div>
                 )}
                 {failingChecks.length > 0 ? (
@@ -369,14 +415,17 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
               : !current ? <div className="empty">{mode === "since" ? "No changes since your review." : "This layer has no file changes."}</div>
               : (
                 <>
-                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
-                    <span className="muted">File {currentIdx + 1} of {ordered.length}</span>
-                    <span className="mono" style={{ fontSize: 13, fontWeight: 500, overflowWrap: "anywhere" }}>{current.path}</span>
+                  <div className="row-nowrap" style={{ gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+                    {width >= 1180 && <span className="muted">File {currentIdx + 1} of {ordered.length}</span>}
+                    <span className="mono shrink" title={current.path} style={{ fontSize: 13, fontWeight: 500, direction: "rtl", textAlign: "left" }}>{current.path}</span>
                     {current.previousPath && <span className="muted mono" style={{ fontSize: 12 }}>← {current.previousPath}</span>}
                     <span className="mono add" style={{ fontSize: 12 }}>+{current.additions}</span>
                     <span className="mono del" style={{ fontSize: 12 }}>−{current.deletions}</span>
                     {mode === "since" && <span className="pill" style={{ background: "#2f2914", color: "var(--warn-fg)" }}>since your review (includes any rebase)</span>}
                     <div className="spacer" />
+                    <button className="btn btn-sm" aria-pressed={showMargin} onClick={() => setMarginPinned((v) => !v)} disabled={notesHere > 0} title={notesHere ? "Notes are shown while this file has any" : "Show the notes column"}>
+                      Notes{notesHere ? ` · ${notesHere}` : ""}
+                    </button>
                     <div role="group" aria-label="Diff layout" style={{ display: "flex", border: "1px solid var(--border-strong)", borderRadius: 6, overflow: "hidden" }}>
                       {(["unified", "split"] as const).map((l) => (
                         <button key={l} onClick={() => setLayout(l)} aria-pressed={layout === l} style={{ padding: "3px 9px", border: 0, fontSize: 12, background: layout === l ? "#232a35" : "transparent", color: layout === l ? "var(--text)" : "var(--muted)", textTransform: "capitalize" }}>{l}</button>
@@ -402,7 +451,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                         onSaveComment={(l, body) => { reviewStore.addDraft(key, { path: current.path, line: l, body, source: "me" }); setComposerLine(null); }}
                       />
                     </div>
-                    <div style={{ flex: "0 0 290px", borderLeft: "1px solid var(--border)", minHeight: 0 }}>
+                    {showMargin && <div style={{ flex: "0 0 290px", borderLeft: "1px solid var(--border)", minHeight: 0 }}>
                       <Margin
                         findings={findingsHere}
                         threads={threadsHere}
@@ -415,23 +464,23 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                         onReply={async (id, body) => { await source.replyToThread(id, body); await threadsQ.refetch(); }}
                         onResolve={async (id, r) => { await source.setThreadResolved(id, r); await threadsQ.refetch(); }}
                       />
-                    </div>
+                    </div>}
                   </div>
                 </>
               )}
           </section>
 
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, margin: "0 16px 14px", padding: "10px 14px", borderRadius: "0 0 12px 12px", border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+          <div className="row-nowrap" style={{ gap: 10, margin: "0 16px 14px", padding: "10px 14px", borderRadius: "0 0 12px 12px", border: "1px solid var(--border)", background: "var(--surface-2)" }}>
             <button className="btn" disabled={currentIdx <= 0} onClick={() => selectFile(ordered[currentIdx - 1].path)}>← Previous <span className="kbd">k</span></button>
             <button className="btn btn-primary" disabled={!current} onClick={markViewedAndNext}>
               {currentIdx === ordered.length - 1 ? "Mark viewed & finish" : "Mark viewed & next"} <span className="kbd" style={{ background: "rgba(0,0,0,.15)", color: "inherit" }}>j</span>
             </button>
-            <div aria-hidden="true" style={{ width: 120, height: 6, borderRadius: 3, background: "#252a31", overflow: "hidden" }}>
+            <div aria-hidden="true" style={{ display: width < 1280 ? "none" : undefined, width: 120, height: 6, borderRadius: 3, background: "#252a31", overflow: "hidden" }}>
               <div style={{ width: `${layerFiles.length ? (viewedCount / layerFiles.length) * 100 : 0}%`, height: 6, background: "var(--accent)" }} />
             </div>
-            <span className="muted">{viewedCount}/{layerFiles.length} viewed{openFindings.length ? ` · ${openFindings.length} to triage` : ""}</span>
+            <span className="muted shrink">{viewedCount}/{layerFiles.length} viewed{openFindings.length ? ` · ${openFindings.length} to triage` : ""}</span>
             <div className="spacer" />
-            <span className="muted" style={{ fontSize: 12 }} title="j/k file · v viewed · n/p next/previous change · c comment · [ ] layer · a agent · f finish">Shortcuts <span className="kbd">?</span></span>
+            <span className="muted" style={{ fontSize: 12, display: width < 1280 ? "none" : undefined }} title="j/k file · v viewed · n/p next/previous change · c comment · [ ] layer · a agent · f finish">Shortcuts <span className="kbd">?</span></span>
             <button className="btn btn-soft" onClick={() => setFinishOpen(true)}>Finish layer… <span className="kbd">f</span></button>
           </div>
         </main>

@@ -12,6 +12,7 @@ export type MyLayerState =
   | "stale" // I reviewed an older head; new commits since
   | "turn" // my review (or my team's) is requested, not reviewed yet
   | "todo" // no review from me, not requested
+  | "waiting" // my own PR, waiting for reviewers
   | "merged"
   | "closed";
 

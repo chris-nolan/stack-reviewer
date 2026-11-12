@@ -13,6 +13,12 @@ export type NativeStack = {
 export function myLayerState(pr: PullRequest, me: string, myTeams: string[]): MyLayerState {
   if (pr.state === "MERGED") return "merged";
   if (pr.state === "CLOSED") return "closed";
+  if (pr.author.toLowerCase() === me.toLowerCase()) {
+    // On my own PRs, show where the reviewers stand rather than my (impossible) review.
+    if (pr.reviewDecision === "APPROVED") return "approved";
+    if (pr.reviewDecision === "CHANGES_REQUESTED") return "changes";
+    return "waiting";
+  }
   const mine = pr.latestReviews.find((r) => r.author.toLowerCase() === me.toLowerCase());
   if (mine && mine.state !== "PENDING" && mine.state !== "DISMISSED") {
     if (mine.commit && mine.commit !== pr.headSha) return "stale";
@@ -130,6 +136,7 @@ export function resumeLayer(stack: Stack): Layer {
   const open = stack.layers.filter((l) => l.pr.state === "OPEN");
   return (
     open.find((l) => l.mine === "turn" || l.mine === "stale" || l.mine === "todo") ??
+    open.find((l) => l.mine === "changes" || l.mine === "waiting") ??
     open[open.length - 1] ??
     stack.layers[stack.layers.length - 1]
   );
@@ -137,6 +144,31 @@ export function resumeLayer(stack: Stack): Layer {
 
 export function reviewedCount(stack: Stack): number {
   return stack.layers.filter((l) => ["approved", "changes", "commented", "merged"].includes(l.mine)).length;
+}
+
+/** "2, 3, 4, 7" → "2–4, 7" */
+export function formatRanges(nums: number[]): string {
+  const sorted = [...new Set(nums)].sort((a, b) => a - b);
+  const parts: string[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    parts.push(j - i >= 2 ? `${sorted[i]}–${sorted[j]}` : j > i ? `${sorted[i]}, ${sorted[j]}` : `${sorted[i]}`);
+    i = j;
+  }
+  return parts.join(", ");
+}
+
+/** Short progress line for a stack row, from the reviewer's or the author's point of view. */
+export function progressLabel(stack: Stack, me: string): string {
+  const mine = stack.author.toLowerCase() === me.toLowerCase();
+  const n = stack.layers.length;
+  if (mine) {
+    const approved = stack.layers.filter((l) => l.mine === "approved" || l.mine === "merged").length;
+    const changes = stack.layers.filter((l) => l.mine === "changes").length;
+    return `${approved} of ${n} approved${changes ? ` · changes requested on ${changes}` : ""}`;
+  }
+  return `${reviewedCount(stack)} of ${n} reviewed · resume at #${resumeLayer(stack).pr.number}`;
 }
 
 export function needsMe(stack: Stack): boolean {

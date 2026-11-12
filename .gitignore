@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local snapshots of real GitHub data (scripts/snapshot.ts)
+dev-data/

@@ -94,6 +94,7 @@ const delay = <T>(v: T, ms = 120) => new Promise<T>((r) => setTimeout(() => r(v)
 
 export class FixtureSource implements DataSource {
   readonly kind = "fixtures" as const;
+  readonly label = "demo";
   private viewedState = new Map<string, boolean>();
   private threadState = structuredClone(THREADS);
 
