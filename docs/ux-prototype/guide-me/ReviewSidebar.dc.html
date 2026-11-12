@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Review page with focus list in the sidebar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0f12}
+a{color:#7ab0ff}a:hover{color:#a9cbff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0d0f12; color: #e7e9ec; font-family: Inter, system-ui, sans-serif; font-size: 13px; overflow: hidden">
+
+  <header style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #1e232a; background: #111418">
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>Overview</button>
+    <nav aria-label="Breadcrumb" style="display: flex; gap: 8px; color: #a0a8b3"><span>orders-api</span><span aria-hidden="true">›</span><span>Add token bucket limiter core</span><span aria-hidden="true">›</span><span style="color: #e7e9ec">#413</span></nav>
+    <div style="flex: 1 1 auto"></div>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #a0a8b3; font: inherit">Jump to… <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 5px; border: 1px solid #2a3038; border-radius: 4px">⌘K</span></button>
+    <button type="button" style="padding: 5px 10px; border-radius: 8px; border: 1px solid #2f4a70; background: #1b2330; color: #a9cbff; font: inherit">Pending review · 0 drafts</button>
+    <button type="button" style="padding: 5px 10px; border-radius: 8px; border: 1px solid #4e3a1e; background: #221c14; color: #f5c77e; font: inherit">Agent <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px">a</span></button>
+  </header>
+
+  <div style="flex: 1 1 auto; min-height: 0; display: flex">
+    <aside style="width: 280px; flex: 0 0 auto; border-right: 1px solid #1e232a; background: #111418; padding: 12px 10px; display: flex; flex-direction: column; gap: 6px; overflow: hidden">
+      <span style="color: #8a939f; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 4px">Stack · layer 2 of 5</span>
+      <sc-for list="{{ rail }}" as="r" hint-placeholder-count="5">
+        <div style="display: flex; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; border: 1px solid {{ r.bd }}; background: {{ r.bg }}; opacity: {{ r.op }}">
+          <span aria-hidden="true" style="flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid {{ r.ring }}; background: {{ r.fill }}; color: {{ r.ringText }}; display: grid; place-items: center; font-size: 10px; font-weight: 700; box-sizing: border-box">{{ r.n }}</span>
+          <span style="flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ r.title }}</span>
+          <span title="{{ r.tierTitle }}" aria-hidden="true" style="flex: 0 0 auto; display: inline-flex; gap: 2px; align-items: flex-end"><sc-for list="{{ r.bars }}" as="b" hint-placeholder-count="3"><span style="width: 3px; height: 9px; border-radius: 1px; background: {{ b.c }}"></span></sc-for></span>
+        </div>
+      </sc-for>
+
+      <div style="height: 6px"></div>
+      <section aria-label="Focus areas" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 10px; border: 1px solid #4e3a1e; background: #15130f">
+        <div style="display: flex; align-items: center"><span style="flex: 1 1 auto; color: #f5c77e; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase">Focus</span><span style="color: #f5c77e; font-size: 11px">1 of 3</span></div>
+        <sc-for list="{{ focus }}" as="f" hint-placeholder-count="3">
+          <div style="display: flex; gap: 8px; align-items: flex-start; padding: 4px; border-radius: 6px; background: {{ f.bg }}">
+            <input type="checkbox" aria-label="{{ f.title }} looked at" checked="{{ f.done }}" style="margin: 2px 0 0">
+            <span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+              <span style="color: {{ f.titleColor }}; text-decoration: {{ f.strike }}; line-height: 1.35">{{ f.title }}</span>
+              <a href="#diff" style="font-family: 'JetBrains Mono', monospace; font-size: 11px">{{ f.where }}</a>
+            </span>
+          </div>
+        </sc-for>
+      </section>
+
+      <div style="height: 6px"></div>
+      <div style="display: flex; align-items: center; padding: 0 4px"><span style="flex: 1 1 auto; color: #8a939f; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase">Files</span><span style="color: #8a939f; font-size: 11px">2/4</span></div>
+      <sc-for list="{{ files }}" as="f" hint-placeholder-count="4">
+        <label style="display: flex; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 6px; background: {{ f.bg }}">
+          <input type="checkbox" checked="{{ f.viewed }}" style="margin: 0">
+          <span style="flex: 1 1 auto; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{ f.color }}">{{ f.name }}</span>
+          <span style="flex: 0 0 auto; font-size: 10px; color: {{ f.tagColor }}; border: 1px solid {{ f.tagBd }}; border-radius: 8px; padding: 0 5px">{{ f.tag }}</span>
+        </label>
+      </sc-for>
+    </aside>
+
+    <main style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: #0f1216">
+      <section aria-label="Layer brief" style="margin: 14px 16px 0; padding: 14px 16px; border-radius: 12px; border: 1px solid #1e232a; background: #13161b; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+          <span style="color: #a0a8b3">Layer 2 of 5 · <a href="#pr">#413</a> · alex-r</span>
+          <span style="padding: 1px 8px; border-radius: 10px; background: #1b2636; color: #a9cbff; font-size: 12px">Your review requested</span>
+          <span style="padding: 1px 8px; border-radius: 10px; background: #2f2914; color: #f0d27a; font-size: 12px">Blocked</span>
+          <div style="flex: 1 1 auto"></div>
+          <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Conversation · 3</button>
+          <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Collapse</button>
+        </div>
+        <h1 style="margin: 0; font-size: 19px; font-weight: 600">Wire limiter into request middleware</h1>
+        <p style="margin: 0; color: #c9ced6; line-height: 1.5; max-width: 900px">Mounts the TokenBucket from #412 as Express middleware, keyed by client IP. Limits come from the new <code style="font-family: 'JetBrains Mono', monospace">rateLimit</code> config block; per-tenant limits follow in #415.</p>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; border: 1px solid #4e3a1e; background: #15130f">
+          <span style="display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 10px; background: #221c14; border: 1px solid #4e3a1e; color: #f5c77e; font-size: 12px">
+            <span aria-hidden="true" style="display: inline-flex; gap: 2px; align-items: flex-end"><span style="width: 3px; height: 10px; border-radius: 1px; background: #f5c77e"></span><span style="width: 3px; height: 10px; border-radius: 1px; background: #f5c77e"></span><span style="width: 3px; height: 10px; border-radius: 1px; background: #f5c77e"></span></span>Heavy · hardest of 5</span>
+          <span style="color: #c9ced6; flex: 1 1 auto; min-width: 0">Small diff, but it decides per-client keying and memory behaviour that #415 builds on.</span>
+          <span style="color: #a0a8b3; font-size: 12px">Skim <span style="font-family: 'JetBrains Mono', monospace">schema.ts</span></span>
+          <button type="button" aria-haspopup="dialog" style="padding: 2px 8px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">1 question for the author</button>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid #4a2623; background: #1a1214">
+          <span style="color: #ff8a80; font-weight: 600; flex: 1 1 auto">✕ test / node 20</span>
+          <button type="button" style="padding: 2px 8px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Log</button>
+          <button type="button" style="padding: 2px 8px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Ask the agent why</button>
+          <span style="color: #5bd48f; font-size: 12px">3 pass</span>
+        </div>
+      </section>
+
+      <section aria-label="File" style="flex: 1 1 auto; min-height: 0; margin: 12px 16px 0; border-radius: 12px 12px 0 0; border: 1px solid #1e232a; border-bottom: 0; background: #13161b; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #1e232a">
+          <span style="color: #8a939f">File 2 of 4</span>
+          <span style="font-family: 'JetBrains Mono', monospace">src/middleware/rateLimit.ts</span>
+          <span style="color: #5bd48f">+20</span><span style="color: #ff8a80">−0</span>
+          <div style="flex: 1 1 auto"></div>
+          <span style="color: #8a939f; font-size: 12px"><span style="font-family: 'JetBrains Mono', monospace; padding: 0 4px; border: 1px solid #2a3038; border-radius: 4px">.</span> next focus</span>
+        </div>
+        <div style="flex: 1 1 auto; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 12px">
+          <sc-for list="{{ code }}" as="c" hint-placeholder-count="20">
+            <sc-if value="{{ c.label }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 52px; background: #1a160f; border-top: 1px solid #4e3a1e; font-family: Inter, system-ui, sans-serif; font-size: 12px">
+                <span style="color: #f5c77e; font-weight: 600; flex: 0 0 auto">Focus {{ c.idx }}</span>
+                <span style="color: {{ c.labelColor }}; flex: 0 0 auto">{{ c.title }}</span>
+                <span style="color: #8a939f; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">— {{ c.why }}</span>
+                <button type="button" style="flex: 0 0 auto; padding: 1px 8px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 11px">{{ c.action }}</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ c.line }}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; background: #0f2418; color: #d6f5e0; line-height: 20px">
+                <span style="width: 3px; flex: 0 0 3px; background: {{ c.bar }}"></span>
+                <span style="width: 44px; flex: 0 0 44px; text-align: right; padding-right: 10px; color: #6f9c80">{{ c.n }}</span>
+                <span style="width: 16px; flex: 0 0 16px; color: #7fe0aa">+</span>
+                <span style="white-space: pre; flex: 1 1 auto">{{ c.text }}</span>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+      </section>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-top: 1px solid #1e232a; background: #111418; margin: 0 16px">
+        <button type="button" style="padding: 5px 10px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">← Previous</button>
+        <button type="button" style="padding: 5px 12px; border-radius: 8px; border: 0; background: #7ab0ff; color: #0d0f12; font: inherit; font-weight: 600">Mark viewed &amp; next</button>
+        <span style="color: #8a939f">2/4 viewed · focus 1/3</span>
+        <div style="flex: 1 1 auto"></div>
+        <button type="button" style="padding: 5px 12px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">Finish layer…</button>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const A = '#f5c77e', OFF = '#3a3226';
+    const bars = (t) => [0, 1, 2].map((i) => ({ c: i < t ? A : OFF }));
+    const tierWord = ['', 'Light', 'Moderate', 'Heavy'];
+    const rail = [
+      { n: 1, title: 'add token bucket limiter core', ring: '#5bd48f', fill: '#5bd48f', ringText: '#0d0f12', t: 2, rank: '3rd' },
+      { n: 2, title: 'Wire limiter into request middleware', ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec', t: 3, rank: '1st', sel: true },
+      { n: 3, title: 'Per-tenant limits from config', ring: '#e8c65a', fill: 'transparent', ringText: '#e7e9ec', t: 2, rank: '2nd' },
+      { n: 4, title: 'Expose limiter metrics', ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec', t: 1, rank: '4th' },
+      { n: 5, title: 'Docs and Grafana dashboard', ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec', t: 1, rank: '5th' },
+    ].map((r) => ({ ...r, bars: bars(r.t), tierTitle: tierWord[r.t] + ', ' + r.rank + ' hardest', bd: r.sel ? '#2f4a70' : 'transparent', bg: r.sel ? '#161d28' : 'transparent', op: r.sel ? 1 : 0.6 }));
+    const files = [
+      { name: 'schema.ts', viewed: true, tag: 'skim', tagColor: '#a0a8b3', tagBd: '#2a3038', color: '#a0a8b3', bg: 'transparent' },
+      { name: 'rateLimit.ts', viewed: false, tag: 'focus 3', tagColor: '#f5c77e', tagBd: '#4e3a1e', color: '#e7e9ec', bg: '#1b2330' },
+      { name: 'server.ts', viewed: true, tag: '', tagColor: 'transparent', tagBd: 'transparent', color: '#e7e9ec', bg: 'transparent' },
+      { name: 'rateLimit.test.ts', viewed: false, tag: '', tagColor: 'transparent', tagBd: 'transparent', color: '#e7e9ec', bg: 'transparent' },
+    ];
+    const focus = [
+      { title: 'Keyed by req.ip', where: 'rateLimit.ts L8', done: true, why: 'Behind the load balancer req.ip is the proxy unless trust proxy is set.' },
+      { title: 'Buckets are never evicted', where: 'rateLimit.ts L9–13', done: false, cur: true, why: 'One bucket per client, kept for the life of the process.' },
+      { title: 'Retry-After is fixed at 1 second', where: 'rateLimit.ts L14–17', done: false, why: "Doesn't follow the refill rate, so clients may retry too early." },
+    ].map((f) => ({ ...f, titleColor: f.done ? '#8a939f' : '#e7e9ec', strike: f.done ? 'line-through' : 'none', bg: f.cur ? '#221c14' : 'transparent' }));
+    const src = [
+      "import { TokenBucket } from '../limiter/tokenBucket';",
+      "import type { Request, Response, NextFunction } from 'express';",
+      '',
+      'const buckets = new Map<string, TokenBucket>();',
+      '',
+      'export function rateLimit(opts: { capacity: number; refillPerSec: number }) {',
+      '  return (req: Request, res: Response, next: NextFunction) => {',
+      '    const key = req.ip;',
+      '    let bucket = buckets.get(key);',
+      '    if (!bucket) {',
+      '      bucket = new TokenBucket(opts.capacity, opts.refillPerSec);',
+      '      buckets.set(key, bucket);',
+      '    }',
+      '    if (!bucket.take()) {',
+      "      res.setHeader('Retry-After', '1');",
+      "      return res.status(429).json({ error: 'rate_limited' });",
+      '    }',
+      '    next();',
+      '  };',
+      '}',
+    ];
+    const ranges = [[8, 8, 1], [9, 13, 2], [14, 17, 3]];
+    const code = [];
+    src.forEach((text, i) => {
+      const n = i + 1;
+      const start = ranges.find((x) => x[0] === n);
+      if (start) {
+        const f = focus[start[2] - 1];
+        code.push({ label: true, line: false, idx: start[2], title: f.title, why: f.why, action: f.done ? '✓ Ticked' : 'Tick', labelColor: f.done ? '#8a939f' : '#e7e9ec' });
+      }
+      const inR = ranges.find((x) => n >= x[0] && n <= x[1]);
+      code.push({ label: false, line: true, n, text, bar: inR ? (focus[inR[2] - 1].done ? '#6b5a3a' : '#f5c77e') : 'transparent' });
+    });
+    return { rail, files, focus, code };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overview while the guide runs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0f12}
+a{color:#7ab0ff}a:hover{color:#a9cbff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; display: flex; flex-direction: column; background: #0d0f12; color: #e7e9ec; font-family: Inter, system-ui, sans-serif; font-size: 13px; overflow: hidden">
+
+  <header style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #1e232a; background: #111418">
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>Inbox</button>
+    <nav aria-label="Breadcrumb" style="display: flex; gap: 8px; color: #a0a8b3"><span>acme/orders-api</span><span aria-hidden="true">›</span><span style="color: #e7e9ec">Add token bucket limiter core</span></nav>
+    <div style="flex: 1 1 auto"></div>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #a0a8b3; font: inherit">Jump to… <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 5px; border: 1px solid #2a3038; border-radius: 4px">⌘K</span></button>
+  </header>
+
+  <section style="display: flex; align-items: flex-start; gap: 16px; padding: 16px 20px 12px">
+    <div style="display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600">Add token bucket limiter core</h1>
+      <div style="display: flex; gap: 8px; color: #a0a8b3; flex-wrap: wrap">
+        <span>alex-r · inferred from branches on <span style="font-family: 'JetBrains Mono', monospace">main</span> · updated 2h ago</span>
+        <span style="color: #e7e9ec; font-weight: 600">5</span><span>layers</span>
+        <span style="color: #5bd48f">+540</span><span style="color: #ff8a80">−24</span>
+        <span>1 of 5 reviewed by you</span>
+        <span style="color: #ff8a80">✕ Checks failing</span>
+      </div>
+    </div>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">☆ Pin</button>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 0; background: #7ab0ff; color: #0d0f12; font: inherit; font-weight: 600">Resume review at layer 2 →</button>
+  </section>
+
+  <section aria-label="Stack guide, in progress" aria-live="polite" style="margin: 0 20px; padding: 14px 16px; border-radius: 12px; border: 1px solid #4e3a1e; background: #15130f; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: #f5c77e; font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m15.5 8.5-2 5-5 2 2-5z"></path></svg>Guide</span>
+      <span style="color: #e7e9ec">Guiding layer 3 of 5</span>
+      <span style="color: #8a939f">· Claude Code · Opus 5.5 · high effort · 4 min</span>
+      <div style="flex: 1 1 auto"></div>
+      <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">View chat</button>
+      <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #4a2623; background: transparent; color: #ffb4aa; font: inherit; font-size: 12px">Stop</button>
+    </div>
+    <div role="progressbar" aria-label="Layers guided" aria-valuemin="0" aria-valuemax="5" aria-valuenow="2" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px">
+      <span style="height: 4px; border-radius: 2px; background: #f5c77e"></span>
+      <span style="height: 4px; border-radius: 2px; background: #f5c77e"></span>
+      <span style="height: 4px; border-radius: 2px; background: #8a6d3e"></span>
+      <span style="height: 4px; border-radius: 2px; background: #2a2620"></span>
+      <span style="height: 4px; border-radius: 2px; background: #2a2620"></span>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center; color: #c9ced6">
+      <span style="width: 12px; height: 12px; border-radius: 50%; border: 2px solid #4e3a1e; border-top-color: #f5c77e; box-sizing: border-box"></span>
+      <span>Reading <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">src/middleware/rateLimit.ts</span> at #415</span>
+    </div>
+    <span style="color: #8a939f">The stack summary, plan and ranking appear after the last layer. Layers fill in below as they're done; you can start reviewing at any time.</span>
+  </section>
+
+  <section aria-label="Across layers" style="display: flex; gap: 10px; padding: 12px 20px 0; align-items: stretch">
+    <div style="writing-mode: vertical-rl; transform: rotate(180deg); color: #8a939f; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; text-align: center">Across layers</div>
+    <div style="width: 250px; padding: 10px 12px; border-radius: 10px; border: 1px solid #4a2623; background: #1a1214; display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-weight: 600">Checks fail from layer 2</strong>
+      <span style="color: #c9ced6">#413 has failing checks.</span>
+    </div>
+    <div style="width: 250px; padding: 10px 12px; border-radius: 10px; border: 1px solid #4a3f1c; background: #1c1a12; display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-weight: 600">1 layer changed since your review</strong>
+      <span style="color: #c9ced6">Layer 3. "Since my review" shows only what's new.</span>
+    </div>
+  </section>
+
+  <div style="flex: 1 1 auto; min-height: 0; display: flex; gap: 14px; padding: 12px 20px 16px">
+    <section aria-label="Layers" style="width: 470px; flex: 0 0 auto; border: 1px solid #1e232a; border-radius: 12px; background: #13161b; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+      <span style="color: #8a939f; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase">Layers · bottom first</span>
+      <sc-for list="{{ layers }}" as="l" hint-placeholder-count="5">
+        <div style="display: flex; gap: 10px; padding: 9px 10px; border-radius: 10px; border: 1px solid #1e232a; background: #13161b">
+          <span aria-hidden="true" style="flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid {{ l.ring }}; background: {{ l.fill }}; color: {{ l.ringText }}; display: grid; place-items: center; font-size: 11px; font-weight: 700; box-sizing: border-box">{{ l.n }}</span>
+          <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+            <div style="display: flex; gap: 6px; align-items: center">
+              <span style="color: #8a939f; font-family: 'JetBrains Mono', monospace; font-size: 12px">#{{ l.num }}</span>
+              <strong style="font-weight: 600; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ l.title }}</strong>
+              <sc-if value="{{ l.done }}" hint-placeholder-val="{{ true }}">
+                <span style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 1px 7px; border-radius: 10px; background: #221c14; border: 1px solid #4e3a1e; color: #f5c77e; font-size: 11px">
+                  <span aria-hidden="true" style="display: inline-flex; gap: 2px; align-items: flex-end"><sc-for list="{{ l.bars }}" as="b" hint-placeholder-count="3"><span style="width: 3px; height: 9px; border-radius: 1px; background: {{ b.c }}"></span></sc-for></span>{{ l.tier }}</span>
+              </sc-if>
+              <sc-if value="{{ l.reading }}" hint-placeholder-val="{{ false }}">
+                <span style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; color: #f5c77e; font-size: 11px"><span style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid #4e3a1e; border-top-color: #f5c77e; box-sizing: border-box"></span>Reading</span>
+              </sc-if>
+              <sc-if value="{{ l.queued }}" hint-placeholder-val="{{ false }}">
+                <span style="flex: 0 0 auto; color: #8a939f; font-size: 11px">Queued</span>
+              </sc-if>
+            </div>
+            <span style="color: {{ l.roleColor }}; line-height: 1.45">{{ l.role }}</span>
+            <div style="display: flex; gap: 6px; font-size: 12px; color: #8a939f">
+              <span>{{ l.files }}</span><sc-if value="{{ l.done }}" hint-placeholder-val="{{ true }}"><span>·</span><span style="color: #f5c77e">focus {{ l.focus }}</span></sc-if><span>·</span><span style="color: #5bd48f">+{{ l.add }}</span><span style="color: #ff8a80">−{{ l.del }}</span>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+
+    <section aria-label="Where the stack touches the code" style="flex: 1 1 auto; min-width: 0; border: 1px solid #1e232a; border-radius: 12px; background: #13161b; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+      <span style="color: #8a939f; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase">Where the stack touches the code · 6 files</span>
+      <span style="color: #8a939f; font-size: 12px">The matrix works as usual while the guide runs; focus outlines appear on cells as each layer is guided.</span>
+      <div style="flex: 1 1 auto; border-radius: 8px; background: repeating-linear-gradient(135deg, #14181d 0 12px, #13161b 12px 24px); display: grid; place-items: center; color: #8a939f">[ existing file × layer matrix, unchanged ]</div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const A = '#f5c77e', OFF = '#3a3226';
+    const bars = (t) => [0, 1, 2].map((i) => ({ c: i < t ? A : OFF }));
+    const tierWord = ['', 'Light', 'Moderate', 'Heavy'];
+    const base = [
+      { n: 1, num: 412, title: 'add token bucket limiter core', files: '3 files', add: 142, del: 0, ring: '#5bd48f', fill: '#5bd48f', ringText: '#0d0f12', s: 'done', t: 2, focus: '2/2', role: 'Adds the TokenBucket class: capacity, refill and take(). Unit-tested, no callers yet.' },
+      { n: 2, num: 413, title: 'Wire limiter into request middleware', files: '4 files', add: 43, del: 1, ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec', s: 'done', t: 3, focus: '1/3', role: 'Mounts the limiter as Express middleware, keyed by client IP.' },
+      { n: 3, num: 415, title: 'Per-tenant limits from config', files: '5 files', add: 88, del: 21, ring: '#e8c65a', fill: 'transparent', ringText: '#e7e9ec', s: 'reading', role: 'Looks limits up per tenant header, falling back to the global default.' },
+      { n: 4, num: 416, title: 'Expose limiter metrics', files: '3 files', add: 57, del: 2, ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec', s: 'queued', role: 'Exposes limiter metrics.' },
+      { n: 5, num: 418, title: 'Docs and Grafana dashboard', files: '2 files', add: 210, del: 0, ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec', s: 'queued', role: 'Docs and Grafana dashboard.' },
+    ];
+    const layers = base.map((d) => ({ ...d, done: d.s === 'done', reading: d.s === 'reading', queued: d.s === 'queued', bars: bars(d.t || 0), tier: tierWord[d.t || 0], roleColor: d.s === 'done' ? '#c9ced6' : '#8a939f' }));
+    return { layers };
+  }
+}
+</script>
+</body>
+</html>

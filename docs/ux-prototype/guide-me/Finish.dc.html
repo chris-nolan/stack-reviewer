@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Finish layer with focus reminder</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0f12}
+a{color:#7ab0ff}a:hover{color:#a9cbff}
+</style>
+</helmet>
+<div style="width: 640px; height: 560px; display: grid; place-items: center; background: rgba(5,6,8,0.85); color: #e7e9ec; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <div role="dialog" aria-label="Finish layer 2" style="width: 560px; padding: 18px; border-radius: 12px; border: 1px solid #2a3038; background: #13161b; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <strong style="font-size: 15px; font-weight: 600; flex: 1 1 auto">Finish layer 2 · #413</strong>
+      <button type="button" aria-label="Close" style="width: 28px; height: 28px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">✕</button>
+    </div>
+
+    <section aria-label="Unticked focus areas" style="display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid #4e3a1e; background: #15130f">
+      <span style="color: #f5c77e; font-weight: 600">2 of 3 focus areas not ticked</span>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span>Buckets are never evicted</span><span style="color: #8a939f; font-family: 'JetBrains Mono', monospace; font-size: 11px">rateLimit.ts L9–13</span></span>
+        <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Jump</button>
+        <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Tick</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span>Retry-After is fixed at 1 second</span><span style="color: #8a939f; font-family: 'JetBrains Mono', monospace; font-size: 11px">rateLimit.ts L14–17</span></span>
+        <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Jump</button>
+        <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Tick</button>
+      </div>
+      <span style="color: #8a939f; font-size: 12px">A reminder only; you can submit without ticking them.</span>
+    </section>
+
+    <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+      <legend style="color: #a0a8b3; margin-bottom: 6px">Verdict</legend>
+      <div style="display: flex; gap: 8px">
+        <label style="flex: 1 1 0; display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a3038"><input type="radio" name="v"> Comment</label>
+        <label style="flex: 1 1 0; display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; border: 1px solid #1f4630; background: #12291d"><input type="radio" name="v" checked> Approve</label>
+        <label style="flex: 1 1 0; display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a3038"><input type="radio" name="v"> Request changes</label>
+      </div>
+    </fieldset>
+
+    <label style="display: flex; flex-direction: column; gap: 6px; color: #a0a8b3">Summary
+      <textarea rows="3" style="padding: 8px; border-radius: 8px; border: 1px solid #2a3038; background: #161a20; color: #e7e9ec; font: inherit; resize: none">Looks good overall. One question on eviction inline.</textarea>
+    </label>
+
+    <div style="display: flex; gap: 8px; align-items: center">
+      <span style="color: #8a939f; flex: 1 1 auto">1 pending comment</span>
+      <button type="button" style="padding: 6px 12px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">Cancel</button>
+      <button type="button" style="padding: 6px 14px; border-radius: 8px; border: 0; background: #7ab0ff; color: #0d0f12; font: inherit; font-weight: 600">Submit review</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":640,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

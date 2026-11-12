@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overview with stack guide</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0f12}
+a{color:#7ab0ff}a:hover{color:#a9cbff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; display: flex; flex-direction: column; background: #0d0f12; color: #e7e9ec; font-family: Inter, system-ui, sans-serif; font-size: 13px; overflow: hidden">
+
+  <header style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #1e232a; background: #111418">
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>Inbox</button>
+    <nav aria-label="Breadcrumb" style="display: flex; gap: 8px; color: #a0a8b3"><span>acme/orders-api</span><span aria-hidden="true">›</span><span style="color: #e7e9ec">Add token bucket limiter core</span></nav>
+    <div style="flex: 1 1 auto"></div>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #a0a8b3; font: inherit">Jump to… <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 5px; border: 1px solid #2a3038; border-radius: 4px">⌘K</span></button>
+  </header>
+
+  <section style="display: flex; align-items: flex-start; gap: 16px; padding: 16px 20px 12px">
+    <div style="display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600">Add token bucket limiter core</h1>
+      <div style="display: flex; gap: 8px; color: #a0a8b3; flex-wrap: wrap">
+        <span>alex-r · inferred from branches on <span style="font-family: 'JetBrains Mono', monospace">main</span> · updated 2h ago</span>
+        <span style="color: #e7e9ec; font-weight: 600">5</span><span>layers</span>
+        <span style="color: #5bd48f">+540</span><span style="color: #ff8a80">−24</span>
+        <span>1 of 5 reviewed by you</span>
+        <span style="color: #ff8a80">✕ Checks failing</span>
+      </div>
+    </div>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">☆ Pin</button>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 0; background: #7ab0ff; color: #0d0f12; font: inherit; font-weight: 600">Resume review at layer 2 →</button>
+  </section>
+
+  <section aria-label="Stack guide" style="margin: 0 20px; padding: 14px 16px; border-radius: 12px; border: 1px solid #4e3a1e; background: #15130f; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: #f5c77e; font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m15.5 8.5-2 5-5 2 2-5z"></path></svg>Guide</span>
+      <span style="color: #8a939f">Claude Code · Opus 5.5 · high effort · 12 min ago</span>
+      <div style="flex: 1 1 auto"></div>
+      <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">View chat</button>
+      <button type="button" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Re-run…</button>
+      <button type="button" aria-expanded="true" style="padding: 3px 9px; border-radius: 6px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit; font-size: 12px">Collapse</button>
+    </div>
+    <div style="display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 28px">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <p style="margin: 0; line-height: 1.55; color: #e7e9ec; max-width: 760px">Adds request rate limiting to orders-api. A token-bucket class lands first, is mounted as Express middleware keyed by client IP, then re-keyed by tenant with limits from config, and finally exposed as Prometheus metrics with a Grafana dashboard. Once all five land, every API request is limited per tenant.</p>
+        <div style="display: flex; gap: 8px; align-items: baseline; line-height: 1.55">
+          <span style="flex: 0 0 auto; color: #f5c77e; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase">Plan</span>
+          <span style="color: #c9ced6">Spend most of your time on <a href="#l2">#413</a>: it decides keying and memory behaviour that <a href="#l3">#415</a> builds on. <a href="#l1">#412</a> is a small, well-tested class. <a href="#l4">#416</a> and <a href="#l5">#418</a> are mostly mechanical.</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="color: #8a939f; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase">Hardest first</span>
+        <sc-for list="{{ ranked }}" as="r" hint-placeholder-count="5">
+          <a href="#layer" style="display: flex; align-items: center; gap: 10px; padding: 3px 6px; margin: 0 -6px; border-radius: 6px; color: #c9ced6; text-decoration: none">
+            <span style="width: 14px; color: #8a939f; font-family: 'JetBrains Mono', monospace; font-size: 11px; text-align: right">{{ r.rank }}</span>
+            <span aria-hidden="true" style="display: inline-flex; gap: 2px; align-items: flex-end">
+              <sc-for list="{{ r.bars }}" as="b" hint-placeholder-count="3"><span style="width: 4px; height: 11px; border-radius: 1px; background: {{ b.c }}"></span></sc-for>
+            </span>
+            <span style="width: 62px; color: {{ r.tierColor }}; font-size: 12px">{{ r.tier }}</span>
+            <span style="color: #8a939f; font-family: 'JetBrains Mono', monospace; font-size: 12px">#{{ r.num }}</span>
+            <span style="flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ r.title }}</span>
+          </a>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Across layers" style="display: flex; gap: 10px; padding: 12px 20px 0; align-items: stretch">
+    <div style="writing-mode: vertical-rl; transform: rotate(180deg); color: #8a939f; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; text-align: center">Across layers</div>
+    <div style="width: 250px; padding: 10px 12px; border-radius: 10px; border: 1px solid #4a2623; background: #1a1214; display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-weight: 600">Checks fail from layer 2</strong>
+      <span style="color: #c9ced6">#413 has failing checks.</span>
+    </div>
+    <div style="width: 250px; padding: 10px 12px; border-radius: 10px; border: 1px solid #4a3f1c; background: #1c1a12; display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-weight: 600">1 layer changed since your review</strong>
+      <span style="color: #c9ced6">Layer 3. "Since my review" shows only what's new.</span>
+    </div>
+    <div style="width: 300px; padding: 10px 12px; border-radius: 10px; border: 1px solid #4e3a1e; background: #221c14; display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-weight: 600; display: flex; gap: 6px; align-items: center"><span style="width: 6px; height: 6px; border-radius: 50%; background: #f5c77e"></span>#413 → #415 re-keys the limiter</strong>
+      <span style="color: #c9ced6">#415 replaces the per-IP key with a tenant key, so read the two together.</span>
+    </div>
+    <div style="width: 300px; padding: 10px 12px; border-radius: 10px; border: 1px solid #4e3a1e; background: #221c14; display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-weight: 600; display: flex; gap: 6px; align-items: center"><span style="width: 6px; height: 6px; border-radius: 50%; background: #f5c77e"></span>#412 · #416 bucket internals</strong>
+      <span style="color: #c9ced6">Metrics in #416 read fields #412 marks private.</span>
+    </div>
+  </section>
+
+  <div style="flex: 1 1 auto; min-height: 0; display: flex; gap: 14px; padding: 12px 20px 16px">
+    <section aria-label="Layers" style="width: 470px; flex: 0 0 auto; border: 1px solid #1e232a; border-radius: 12px; background: #13161b; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+      <span style="color: #8a939f; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase">Layers · bottom first</span>
+      <sc-for list="{{ layers }}" as="l" hint-placeholder-count="5">
+        <div style="display: flex; gap: 10px; padding: 9px 10px; border-radius: 10px; border: 1px solid {{ l.bd }}; background: {{ l.bg }}">
+          <span aria-hidden="true" style="flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid {{ l.ring }}; background: {{ l.fill }}; color: {{ l.ringText }}; display: grid; place-items: center; font-size: 11px; font-weight: 700; box-sizing: border-box">{{ l.n }}</span>
+          <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+            <div style="display: flex; gap: 6px; align-items: center">
+              <span style="color: #8a939f; font-family: 'JetBrains Mono', monospace; font-size: 12px">#{{ l.num }}</span>
+              <span style="color: #8a939f; font-family: 'JetBrains Mono', monospace; font-size: 11px">{{ l.tag }}</span>
+              <strong style="font-weight: 600; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ l.title }}</strong>
+              <span title="{{ l.tierTitle }}" style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 1px 7px; border-radius: 10px; background: #221c14; border: 1px solid #4e3a1e; color: #f5c77e; font-size: 11px">
+                <span aria-hidden="true" style="display: inline-flex; gap: 2px; align-items: flex-end"><sc-for list="{{ l.bars }}" as="b" hint-placeholder-count="3"><span style="width: 3px; height: 9px; border-radius: 1px; background: {{ b.c }}"></span></sc-for></span>{{ l.tier }} · {{ l.rankWord }}</span>
+            </div>
+            <span style="color: #c9ced6; line-height: 1.45">{{ l.role }}</span>
+            <div style="display: flex; gap: 10px; font-size: 12px">
+              <span style="color: {{ l.stateColor }}">{{ l.state }}</span>
+              <span style="color: {{ l.checksColor }}">{{ l.checks }}</span>
+            </div>
+            <div style="display: flex; gap: 6px; font-size: 12px; color: #8a939f">
+              <span>{{ l.files }}</span><span>·</span><span style="color: #f5c77e">focus {{ l.focus }}</span><span>·</span><span style="color: #5bd48f">+{{ l.add }}</span><span style="color: #ff8a80">−{{ l.del }}</span>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+
+    <section aria-label="Where the stack touches the code" style="flex: 1 1 auto; min-width: 0; border: 1px solid #1e232a; border-radius: 12px; background: #13161b; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+      <span style="color: #8a939f; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase">Where the stack touches the code · 6 files</span>
+      <span style="color: #8a939f; font-size: 12px">Darker = bigger change · ✓ viewed · <span style="color: #f5c77e">▮ focus area</span> · ✕ failing checks · double-click to open</span>
+      <div style="display: grid; grid-template-columns: 320px repeat(5, 64px); row-gap: 8px; align-items: center">
+        <span style="color: #8a939f; font-size: 12px">File</span>
+        <sc-for list="{{ cols }}" as="c" hint-placeholder-count="5">
+          <span style="display: flex; flex-direction: column; align-items: center; gap: 3px; color: #a0a8b3; font-size: 12px">
+            <span>{{ c.n }}</span>
+            <span aria-hidden="true" style="display: inline-flex; gap: 2px; align-items: flex-end"><sc-for list="{{ c.bars }}" as="b" hint-placeholder-count="3"><span style="width: 3px; height: 8px; border-radius: 1px; background: {{ b.c }}"></span></sc-for></span>
+            <span style="color: #8a939f; font-size: 11px">#{{ c.num }}</span>
+          </span>
+        </sc-for>
+        <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #c9ced6">{{ row.name }} <span style="color: #8a939f">{{ row.dir }}</span></span>
+          <sc-for list="{{ row.cells }}" as="cell" hint-placeholder-count="5">
+            <span style="display: flex; justify-content: center"><span style="width: 52px; height: 22px; border-radius: 5px; background: {{ cell.bg }}; box-shadow: {{ cell.ring }}; color: #c9ced6; font-size: 11px; display: grid; place-items: center; font-family: 'JetBrains Mono', monospace">{{ cell.t }}</span></span>
+          </sc-for>
+        </sc-for>
+      </div>
+      <div style="flex: 1 1 auto"></div>
+      <span style="color: #8a939f; font-size: 12px; border-top: 1px solid #1e232a; padding-top: 10px">Click a cell to see the change, or hover a layer to trace it.</span>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const A = '#f5c77e', OFF = '#3a3226';
+    const bars = (t) => [0, 1, 2].map((i) => ({ c: i < t ? A : OFF }));
+    const tierWord = ['', 'Light', 'Moderate', 'Heavy'];
+    const tierColor = ['', '#c9ced6', '#f5c77e', '#ffcf8a'];
+    const data = [
+      { n: 1, num: 412, tag: 'feat(limiter)', title: 'add token bucket limiter core', role: 'Adds the TokenBucket class: capacity, refill and take(). Unit-tested, no callers yet.', state: '✓ Approved by you', stateColor: '#7fe0aa', checks: '✓ Checks pass', checksColor: '#5bd48f', files: '3 files · 2 viewed', focus: '2/2', add: 142, del: 0, t: 2, rank: 3, ring: '#5bd48f', fill: '#5bd48f', ringText: '#0d0f12' },
+      { n: 2, num: 413, tag: 'feat', title: 'Wire limiter into request middleware', role: 'Mounts the limiter as Express middleware, keyed by client IP.', state: '● Your review requested', stateColor: '#a9cbff', checks: '✕ Checks failing', checksColor: '#ff8a80', files: '4 files · 2 viewed', focus: '1/3', add: 43, del: 1, t: 3, rank: 1, ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec', sel: true },
+      { n: 3, num: 415, tag: 'feat', title: 'Per-tenant limits from config', role: 'Re-keys buckets by the tenant header and reads limits from config.', state: '! New commits since your review', stateColor: '#f0d27a', checks: '● Checks running', checksColor: '#e8c65a', files: '5 files · 0 viewed', focus: '0/3', add: 88, del: 21, t: 2, rank: 2, ring: '#e8c65a', fill: 'transparent', ringText: '#e7e9ec' },
+      { n: 4, num: 416, tag: 'feat', title: 'Expose limiter metrics', role: 'Publishes bucket fill and rejections as Prometheus metrics.', state: '● Your review requested', stateColor: '#a9cbff', checks: '– No checks', checksColor: '#8a939f', files: '3 files · 0 viewed', focus: '0/1', add: 57, del: 2, t: 1, rank: 4, ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec' },
+      { n: 5, num: 418, tag: 'docs', title: 'Docs and Grafana dashboard', role: 'Documents the limiter and adds a dashboard for the new metrics.', state: '● Your review requested', stateColor: '#a9cbff', checks: '✓ Checks pass', checksColor: '#5bd48f', files: '2 files · 0 viewed', focus: '0/1', add: 210, del: 0, t: 1, rank: 5, ring: '#7ab0ff', fill: 'transparent', ringText: '#e7e9ec' },
+    ];
+    const ord = ['', '1st', '2nd', '3rd', '4th', '5th'];
+    const layers = data.map((d) => ({ ...d, bars: bars(d.t), tier: tierWord[d.t], rankWord: ord[d.rank], tierTitle: tierWord[d.t] + ', ' + ord[d.rank] + ' hardest of 5', bd: d.sel ? '#2f4a70' : '#1e232a', bg: d.sel ? '#161d28' : '#13161b' }));
+    const ranked = [...data].sort((a, b) => a.rank - b.rank).map((d) => ({ rank: d.rank, num: d.num, title: d.title, tier: tierWord[d.t], tierColor: tierColor[d.t], bars: bars(d.t) }));
+    const cols = data.map((d) => ({ n: d.n, num: d.num, bars: bars(d.t) }));
+    const E = { bg: 'transparent', ring: 'none', t: '' };
+    const c = (t, shade, focus) => ({ t, bg: shade === 3 ? '#2c4466' : shade === 2 ? '#22344d' : '#1b2738', ring: focus ? 'inset 0 0 0 1px #f5c77e' : 'none' });
+    const rows = [
+      { name: 'index.ts', dir: 'src/limiter', cells: [c('+1 ✓', 1), E, E, E, E] },
+      { name: 'tokenBucket.ts', dir: 'src/limiter', cells: [c('+38 ✓', 2, true), E, E, c('+4', 1, true), E] },
+      { name: 'schema.ts', dir: 'src/config', cells: [E, c('+6 ✓', 1), c('+22', 2), E, E] },
+      { name: 'rateLimit.ts', dir: 'src/middleware', cells: [E, c('+20', 3, true), c('+31', 3, true), E, E] },
+      { name: 'server.ts', dir: 'src', cells: [E, c('+3 ✓', 1, true), E, c('+9', 1), E] },
+      { name: 'rateLimit.test.ts', dir: 'test/middleware', cells: [E, c('+14', 2), c('+18', 2), E, E] },
+    ];
+    return { layers, ranked, cols, rows };
+  }
+}
+</script>
+</body>
+</html>

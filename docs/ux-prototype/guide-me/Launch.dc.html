@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Guide me launch popover</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0f12}
+a{color:#7ab0ff}a:hover{color:#a9cbff}
+</style>
+</helmet>
+<div style="position: relative; width: 760px; height: 560px; background: #0d0f12; color: #e7e9ec; font-family: Inter, system-ui, sans-serif; font-size: 13px; overflow: hidden">
+
+  <section style="display: flex; align-items: flex-start; gap: 10px; padding: 18px 20px 12px">
+    <div style="display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-width: 0">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Add token bucket limiter core</h1>
+      <span style="color: #a0a8b3">alex-r · 5 layers · 1 of 5 reviewed by you</span>
+    </div>
+    <button type="button" aria-expanded="true" aria-haspopup="dialog" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; border: 1px solid #4e3a1e; background: #221c14; color: #f5c77e; font: inherit; font-weight: 500">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m15.5 8.5-2 5-5 2 2-5z"></path></svg>Guide me</button>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">☆ Pin</button>
+    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 0; background: #7ab0ff; color: #0d0f12; font: inherit; font-weight: 600">Resume at layer 2 →</button>
+  </section>
+
+  <div style="margin: 4px 20px 0; height: 80px; border-radius: 12px; border: 1px solid #1e232a; background: #13161b; opacity: 0.5"></div>
+  <div style="margin: 12px 20px 0; height: 300px; border-radius: 12px; border: 1px solid #1e232a; background: #13161b; opacity: 0.5"></div>
+
+  <div role="dialog" aria-label="Guide me through this stack" style="position: absolute; top: 62px; left: 168px; width: 380px; padding: 16px; border-radius: 12px; border: 1px solid #2a3038; background: #181c22; box-shadow: 0 18px 48px rgba(0,0,0,0.55); display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <strong style="font-size: 15px; font-weight: 600">Guide me through this stack</strong>
+      <span style="color: #a0a8b3; line-height: 1.5">The agent reads every open layer, summarises the stack, ranks layers by how hard they are to review, and marks where to focus in each.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px 12px; align-items: center">
+      <label for="g-agent" style="color: #a0a8b3">Agent</label>
+      <select id="g-agent" style="padding: 6px 8px; border-radius: 8px; border: 1px solid #2a3038; background: #13161b; color: #e7e9ec; font: inherit">
+        <option>Claude Code</option><option>Gemini CLI</option>
+      </select>
+      <label for="g-model" style="color: #a0a8b3">Model</label>
+      <select id="g-model" style="padding: 6px 8px; border-radius: 8px; border: 1px solid #2a3038; background: #13161b; color: #e7e9ec; font: inherit">
+        <option>Opus 5.5</option><option>Sonnet 5.5</option>
+      </select>
+      <span id="g-effort-l" style="color: #a0a8b3">Effort</span>
+      <div role="radiogroup" aria-labelledby="g-effort-l" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid #2a3038; border-radius: 8px; overflow: hidden">
+        <button type="button" role="radio" aria-checked="false" style="padding: 6px 0; border: 0; background: transparent; color: #a0a8b3; font: inherit; font-size: 12px">Low</button>
+        <button type="button" role="radio" aria-checked="false" style="padding: 6px 0; border: 0; border-left: 1px solid #2a3038; background: transparent; color: #a0a8b3; font: inherit; font-size: 12px">Medium</button>
+        <button type="button" role="radio" aria-checked="true" style="padding: 6px 0; border: 0; border-left: 1px solid #2a3038; background: #232a35; color: #e7e9ec; font: inherit; font-size: 12px; font-weight: 600">High</button>
+        <button type="button" role="radio" aria-checked="false" style="padding: 6px 0; border: 0; border-left: 1px solid #2a3038; background: transparent; color: #a0a8b3; font: inherit; font-size: 12px">Max</button>
+      </div>
+    </div>
+    <span style="color: #8a939f; font-size: 12px; margin-top: -6px">Pickers come from the agent, prefilled with what you last chose in the chat.</span>
+
+    <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 8px; background: #13161b; border: 1px solid #1e232a; color: #c9ced6; line-height: 1.45">
+      <span>5 open layers. Merged and closed layers are skipped.</span>
+      <span style="color: #8a939f">Runs in this stack's agent chat, so you can ask follow-ups afterwards. Read-only: no findings, nothing posted to GitHub.</span>
+    </div>
+
+    <div style="display: flex; gap: 8px; justify-content: flex-end">
+      <button type="button" style="padding: 6px 12px; border-radius: 8px; border: 1px solid #2a3038; background: transparent; color: #c9ced6; font: inherit">Cancel</button>
+      <button type="button" style="padding: 6px 14px; border-radius: 8px; border: 0; background: #f5c77e; color: #0d0f12; font: inherit; font-weight: 600">Start guide</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
