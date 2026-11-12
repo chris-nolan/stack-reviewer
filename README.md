@@ -96,4 +96,4 @@ Pushing the tag:
 3. builds a universal macOS `.dmg`/`.app` and a Windows `.msi` and `-setup.exe`;
 4. publishes the release once every build has uploaded.
 
-A tag with a hyphen (`v0.2.0-beta.1`) is published as a pre-release. Builds aren't code-signed yet, so the release notes explain the macOS Gatekeeper and Windows SmartScreen prompts.
+A tag with a hyphen (`v0.2.0-beta.1`) is published as a pre-release; on Windows it ships only the `-setup.exe`, because MSI versions can't carry a pre-release label like `beta`. Builds aren't code-signed yet, so the release notes explain the macOS Gatekeeper and Windows SmartScreen prompts.

@@ -47,7 +47,7 @@ jobs:
           ## Install
 
           - **macOS** (Apple Silicon and Intel): open the `.dmg` and drag Stack Reviewer to Applications.
-          - **Windows**: run the `-setup.exe` (or the `.msi`).
+          - **Windows**: run the `-setup.exe` (full releases also include an `.msi`).
 
           These builds are not code-signed yet. On macOS, right-click the app and choose **Open** the
           first time (or run `xattr -dr com.apple.quarantine "/Applications/Stack Reviewer.app"`). On
@@ -102,7 +102,8 @@ jobs:
         with:
           releaseId: ${{ needs.prepare.outputs.release_id }}
           tauriScript: bun run tauri
-          args: ${{ matrix.args }}
+          # The MSI format only allows numeric pre-release versions, so pre-releases ship the NSIS setup.exe only.
+          args: ${{ (matrix.os == 'windows-latest' && contains(github.ref_name, '-')) && '--bundles nsis' || matrix.args }}
 
   publish:
     name: Publish release
