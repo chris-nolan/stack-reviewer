@@ -41,8 +41,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          pre=""
-          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          pre=false
+          case "$GITHUB_REF_NAME" in *-*) pre=true ;; esac
           cat > notes.md <<'EOF'
           ## Install
 
@@ -53,10 +53,12 @@ jobs:
           first time (or run `xattr -dr com.apple.quarantine "/Applications/Stack Reviewer.app"`). On
           Windows, SmartScreen may warn: choose **More info → Run anyway**.
           EOF
-          gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag \
-            --title "Stack Reviewer ${GITHUB_REF_NAME}" --notes-file notes.md --generate-notes
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -1)
-          [ -n "$id" ] || { echo "::error::draft release not found"; exit 1; }
+          # Create through the API so the id comes straight back (a draft isn't findable by tag at once).
+          # GitHub puts `body` above the generated notes.
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" -f name="Stack Reviewer ${GITHUB_REF_NAME}" \
+            -F body=@notes.md -F draft=true -F prerelease=$pre -F generate_release_notes=true --jq .id)
+          [ -n "$id" ] || { echo "::error::could not create the draft release"; exit 1; }
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
 
   build:
