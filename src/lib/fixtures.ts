@@ -134,6 +134,13 @@ const delay = <T>(v: T, ms = 120) => new Promise<T>((r) => setTimeout(() => r(v)
 export class FixtureSource implements DataSource {
   readonly kind = "fixtures" as const;
   readonly label = "demo";
+  /** `login` is only the identity shown (the demo menu has two fake accounts); the data is the same. */
+  constructor(private login: string = ME) {}
+  /** `?demo&sso` shows the "organisation needs SSO authorisation" notice. */
+  accessIssue() {
+    if (typeof window === "undefined" || !new URLSearchParams(window.location.search).has("sso")) return null;
+    return { kind: "sso" as const, message: "Resource protected by organization SAML enforcement.", url: "https://example.test/orgs/acme/sso" };
+  }
   private viewedState = new Map<string, boolean>();
   private threadState = structuredClone(THREADS);
   private conversationState = structuredClone(CONVERSATION);
@@ -142,7 +149,7 @@ export class FixtureSource implements DataSource {
     return buildStacks(repo, PRS, [], ME);
   }
   viewer(): Promise<Viewer> {
-    return delay({ login: ME, name: "You", avatarUrl: "", teams: [] });
+    return delay({ login: this.login, name: this.login === ME ? "You" : this.login, avatarUrl: "", teams: [] });
   }
   orgs() { return delay(["acme"]); }
   teams() { return delay<string[]>([]); }

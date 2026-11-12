@@ -2,11 +2,15 @@
 // page's dock and the overview's "Guide me", so a guide can run without opening the review page.
 
 import { useCallback, useState } from "react";
-import { useSource } from "../app/session";
+import { useSession, useSource } from "../app/session";
 import { useStackBridge } from "../features/review/stackBridge";
 import type { Layer, Stack } from "../lib/model";
 import { invoke } from "../lib/platform";
 import type { AgentSession } from "./session";
+
+/** One checkout slot per account, stack and agent, so two accounts never share a working tree. */
+export const worktreeSlot = (login: string, stackKey: string, agentId: string) =>
+  `${login}-${agentId}-${stackKey}`.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64);
 
 type Worktree = { path: string; head: string; base: string };
 
@@ -14,6 +18,7 @@ export const stackIdOf = (stack: Pick<Stack, "repo" | "key">) => `${stack.repo.o
 
 export function useStackAgent(stack: Stack) {
   const source = useSource();
+  const login = useSession().viewer?.login ?? "";
   useStackBridge(stack);
   const [preparing, setPreparing] = useState<string | null>(null);
 
@@ -22,7 +27,7 @@ export function useStackAgent(stack: Stack) {
     async (session: AgentSession, layer: Layer) => {
       const token = source.gitToken();
       if (!token) throw new Error("Agents need a real GitHub sign-in (demo data has no code to read).");
-      const slot = `${stack.key}-${session.agentId}`.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64);
+      const slot = worktreeSlot(login, stack.key, session.agentId);
       const here = session.getSnapshot().layer;
       const needCheckout = !session.running || !here || here.headSha !== layer.pr.headSha;
       try {
@@ -41,7 +46,7 @@ export function useStackAgent(stack: Stack) {
         setPreparing(null);
       }
     },
-    [source, stack],
+    [source, stack, login],
   );
 
   /**

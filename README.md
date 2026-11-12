@@ -13,12 +13,14 @@ bun run dev            # browser only: open http://localhost:1420/?demo for demo
 bun run tauri build    # signed builds are not set up yet
 ```
 
-Sign-in options:
-- **Use my GitHub CLI login**: imports the token from `gh auth login`.
+Sign-in options (you can add several accounts and switch between them from the account menu in the sidebar, the command palette's "Switch account…", or Settings → Accounts):
+- **GitHub CLI (gh) login**: the app lists every account logged in to `gh` (`gh auth status`) and you pick one, so it doesn't have to be gh's active account. Nothing is copied: the token is read from `gh auth token --user <login>` each time the account is used, so re-logging in with gh never leaves a stale token. The app never runs `gh auth switch` or changes gh's config.
 - **Personal access token**: needs `repo` and `read:org`.
 - **Sign in with GitHub** (device flow): appears once an org-owned OAuth app exists. Set `VITE_GITHUB_CLIENT_ID` at build time to enable it.
 
-Tokens are stored in the OS keychain (`stack-reviewer` / `github`).
+Device and token accounts are stored in the OS keychain, one entry per login (`stack-reviewer` / `github:<login>`), plus an index entry (`accounts-index`) with the logins, how each signs in and which is current. A token saved by an older version is moved under its login on first start. Removing an account ("Sign out of <login>") only forgets it in the app.
+
+Drafts, guides, pins, "seen" state and agent chats are kept per account, and agents (and their checkouts) are never shared between accounts. If an org requires SAML SSO and the account's token isn't authorised for it, the inbox says so and links to GitHub to authorise it.
 
 ## Windows
 

@@ -15,6 +15,9 @@ export class GitHubError extends Error {
   }
 }
 
+/** The token works but an organisation hasn't authorised it (SAML SSO), so its data is hidden. */
+export type AccessIssue = { kind: "sso"; message: string; url?: string };
+
 export type RateLimit = { remaining: number; limit: number; reset: number };
 let lastRate: RateLimit | null = null;
 export const rateLimit = () => lastRate;
@@ -79,6 +82,12 @@ export class GitHubSource implements DataSource {
   readonly kind = "github" as const;
   private me: Viewer | null = null;
   private teamCache = new Map<string, string[]>();
+  private access: AccessIssue | null = null;
+
+  /** Set once a response showed that an org's data is hidden from this token by SSO; cleared by a clean viewer lookup. */
+  accessIssue(): AccessIssue | null {
+    return this.access;
+  }
 
   constructor(private token: string) {}
 
@@ -101,6 +110,9 @@ export class GitHubSource implements DataSource {
         reset: Number(res.headers.get("x-ratelimit-reset") ?? 0),
       };
     }
+    if (res.ok && /partial-results/.test(res.headers.get("x-github-sso") ?? "")) {
+      this.access = { kind: "sso", message: "Some organisations hide their data until this token is authorised for single sign-on." };
+    }
     if (!res.ok) {
       const sso = res.headers.get("x-github-sso");
       const ssoUrl = sso?.match(/url=(\S+)/)?.[1];
@@ -109,6 +121,7 @@ export class GitHubSource implements DataSource {
         const body = await res.json();
         if (body?.message) message = body.message;
       } catch { /* not json */ }
+      if (res.status === 403 && sso) this.access = { kind: "sso", message, url: ssoUrl };
       throw new GitHubError(message, res.status, ssoUrl);
     }
     return res;
@@ -127,6 +140,9 @@ export class GitHubSource implements DataSource {
       body: JSON.stringify({ query, variables }),
       cache: "no-store",
     });
+    // GraphQL answers 200 with partial data when an org's SAML SSO hasn't authorised this token.
+    const saml = body.errors?.find((e) => /saml|single sign-on|sso/i.test(e.message));
+    if (saml) this.access = { kind: "sso", message: saml.message, url: saml.message.match(/https:\/\/\S+/)?.[0] };
     if (body.errors?.length && !body.data) throw new GitHubError(body.errors[0].message, 200);
     return body.data;
   }
@@ -208,6 +224,7 @@ export class GitHubSource implements DataSource {
   }
 
   async inbox(org: string, opts: { includeSingles: boolean }): Promise<Inbox> {
+    this.access = null; // re-detected below if the org still hides data
     const me = await this.viewer();
     const q = (filter: string) => `is:pr is:open archived:false org:${org} ${filter}`;
     const d = await this.gql<Record<"review" | "assigned" | "mine", { nodes: { number?: number; repository?: { owner: { login: string }; name: string } }[] }>>(

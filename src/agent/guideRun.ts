@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect } from "react";
 import { useNav } from "../app/nav";
-import { useSource } from "../app/session";
+import { useSession, useSource } from "../app/session";
 import { demoGuide } from "../lib/guideFixtures";
 import { guideTargets, type GuideDoc, type GuideRun } from "../lib/guide";
 import { guideStore, useGuide } from "../lib/guideStore";
@@ -52,6 +52,7 @@ export function layersFor(stack: Stack, doc: GuideDoc, mode: GuideLaunch["mode"]
 
 export function useGuideRun(stack: Stack) {
   const source = useSource();
+  const login = useSession().viewer?.login ?? "";
   const { go } = useNav();
   const { ensureRunning, prefetch, preparing } = useStackAgent(stack);
   const stackId = stackIdOf(stack);
@@ -64,7 +65,7 @@ export function useGuideRun(stack: Stack) {
       if (!targets.length) return;
       const kind: GuideRun["kind"] = o.mode === "all" ? "all" : o.mode === "refresh" ? "refresh" : "continue";
       const pending = targets.map((l) => l.pr.number);
-      const session = source.kind === "fixtures" ? null : getAgentSession(stackId, o.agentId, o.agentName);
+      const session = source.kind === "fixtures" ? null : getAgentSession(login, stackId, o.agentId, o.agentName);
       // One prompt at a time per chat: never start a guide over a turn that is still running.
       if (session?.getSnapshot().status === "busy") {
         session.notice("The guide didn't start: this chat is busy. Wait for the current reply or stop it, then try again.", "error");
@@ -103,7 +104,7 @@ export function useGuideRun(stack: Stack) {
         activeSessions.delete(stackId);
       }
     },
-    [stack, stackId, source, ensureRunning, prefetch],
+    [stack, stackId, login, source, ensureRunning, prefetch],
   );
 
   // ?demo&guide=1 shows a finished guide (with two layers out of date); ?demo&guide=running freezes a run mid-way.

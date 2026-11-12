@@ -22,6 +22,8 @@ export interface DataSource {
   readonly kind: "github" | "fixtures";
   /** Shown as a badge when the data isn't live GitHub (e.g. "demo", "snapshot"). */
   readonly label?: string;
+  /** Set when the token can't see something it should (e.g. an org that requires SSO authorisation). */
+  accessIssue?(): { kind: "sso"; message: string; url?: string } | null;
   viewer(): Promise<Viewer>;
   orgs(): Promise<string[]>;
   teams(org: string): Promise<string[]>;

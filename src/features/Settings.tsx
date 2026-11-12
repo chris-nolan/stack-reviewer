@@ -6,6 +6,7 @@ import { useNav } from "../app/nav";
 import { useAgents } from "../agent/useAgents";
 import { agentConfig, type AgentCommand, type CustomAgent } from "../agent/config";
 import { invoke, isTauri, local } from "../lib/platform";
+import { AccountsList, AddAccountDialog } from "../ui/AccountMenu";
 import { AgentDot, ChevronLeft, ErrorBox, Spinner } from "../ui/bits";
 
 type WorktreeInfo = { name: string; path: string; size: number; modified: number; legacy: boolean };
@@ -94,6 +95,16 @@ function CommandFields({ value, onChange, placeholder }: { value: AgentCommand; 
       <input className="input" style={{ flex: "2 1 220px" }} aria-label="Command" placeholder={placeholder?.command ?? "Command or path"} value={value.command} onChange={(e) => onChange({ ...value, command: e.target.value })} />
       <input className="input" style={{ flex: "1 1 160px" }} aria-label="Arguments" placeholder={placeholder?.args ?? "Arguments"} value={value.args} onChange={(e) => onChange({ ...value, args: e.target.value })} />
     </div>
+  );
+}
+
+function Accounts() {
+  const [adding, setAdding] = useState(false);
+  return (
+    <Section title="Accounts" note="Each account keeps its own drafts, guides, pins and agent chats. Removing an account only forgets it in this app; GitHub and the GitHub CLI are not changed. Accounts from the GitHub CLI use gh's current token every time.">
+      <AccountsList onAdd={() => setAdding(true)} />
+      {adding && <AddAccountDialog onClose={() => setAdding(false)} />}
+    </Section>
   );
 }
 
@@ -225,6 +236,7 @@ export function Settings() {
       </header>
       <div style={{ maxWidth: 720, padding: "24px 28px" }}>
         <General />
+        <Accounts />
         <Agents />
         <Cache />
       </div>

@@ -10,36 +10,85 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   return tauriInvoke<T>(cmd, args);
 }
 
-const DEV_TOKEN_KEY = "stack-reviewer.dev-token";
+/** How an account signs in: via the GitHub CLI (token read fresh from gh each time), device flow, or a pasted token. */
+export type Via = "gh" | "device" | "token";
+export type StoredAccount = { login: string; via: Via };
+export type AccountIndex = { accounts: StoredAccount[]; current: string | null };
+export type GhAccount = { login: string; active: boolean; ok: boolean };
 
-export async function getToken(): Promise<string | null> {
-  if (isTauri()) return invoke<string | null>("auth_get_token");
+export const viaLabel = (via: Via): string => (via === "gh" ? "via GitHub CLI" : via === "device" ? "via device sign-in" : "via token");
+
+// Browser (dev) fallback: the same shape kept in sessionStorage so a pasted token still works without the desktop app.
+const DEV_KEY = "stack-reviewer.dev-accounts";
+type DevState = { index: AccountIndex; tokens: Record<string, string> };
+function devRead(): DevState {
   try {
-    return sessionStorage.getItem(DEV_TOKEN_KEY);
+    const raw = sessionStorage.getItem(DEV_KEY);
+    if (raw) return JSON.parse(raw) as DevState;
   } catch {
-    return null;
+    /* storage unavailable */
   }
+  return { index: { accounts: [], current: null }, tokens: {} };
 }
-
-export async function saveToken(token: string): Promise<void> {
-  if (isTauri()) return invoke("auth_save_token", { token });
+function devWrite(s: DevState) {
   try {
-    sessionStorage.setItem(DEV_TOKEN_KEY, token.trim());
+    sessionStorage.setItem(DEV_KEY, JSON.stringify(s));
   } catch {
     /* storage unavailable */
   }
 }
 
-export async function clearToken(): Promise<void> {
-  if (isTauri()) return invoke("auth_clear_token");
+/** The app's accounts (the desktop app migrates a pre-accounts token here on first call). */
+export async function accountsLoad(): Promise<AccountIndex> {
+  return isTauri() ? invoke<AccountIndex>("auth_accounts") : devRead().index;
+}
+
+/** The token for one account. gh accounts get a fresh token from gh every time. */
+export async function accountToken(login: string): Promise<string | null> {
+  return isTauri() ? invoke<string | null>("auth_account_token", { login }) : (devRead().tokens[login] ?? null);
+}
+
+/** Remember an account and make it current. `token` is required unless `via` is "gh". */
+export async function accountSave(login: string, via: Via, token?: string): Promise<AccountIndex> {
+  if (isTauri()) return invoke<AccountIndex>("auth_account_save", { login, via, token: token ?? null });
+  const s = devRead();
+  if (via !== "gh") s.tokens[login] = (token ?? "").trim();
+  s.index.accounts = [...s.index.accounts.filter((a) => a.login !== login), { login, via }];
+  s.index.current = login;
+  devWrite(s);
+  return s.index;
+}
+
+export async function accountSelect(login: string): Promise<AccountIndex> {
+  if (isTauri()) return invoke<AccountIndex>("auth_account_select", { login });
+  const s = devRead();
+  s.index.current = login;
+  devWrite(s);
+  return s.index;
+}
+
+/** Forget an account in this app only (never touches gh). */
+export async function accountRemove(login: string): Promise<AccountIndex> {
+  if (isTauri()) return invoke<AccountIndex>("auth_account_remove", { login });
+  const s = devRead();
+  delete s.tokens[login];
+  s.index.accounts = s.index.accounts.filter((a) => a.login !== login);
+  if (s.index.current === login) s.index.current = s.index.accounts[0]?.login ?? null;
+  devWrite(s);
+  return s.index;
+}
+
+/** Accounts logged in to the GitHub CLI (read-only; empty without the desktop app or gh). */
+export async function ghAccounts(): Promise<GhAccount[]> {
+  if (!isTauri()) return [];
   try {
-    sessionStorage.removeItem(DEV_TOKEN_KEY);
+    return await invoke<GhAccount[]>("auth_gh_accounts");
   } catch {
-    /* storage unavailable */
+    return [];
   }
 }
 
-export const importGhToken = () => invoke<string>("auth_import_gh_token");
+export const ghToken = (login: string) => invoke<string>("auth_gh_token", { login });
 
 export type DeviceCode = { device_code: string; user_code: string; verification_uri: string; interval: number; expires_in: number };
 export type DevicePoll = { status: "pending" | "slow_down" } | { status: "done"; token: string } | { status: "failed"; message: string };

@@ -8,16 +8,18 @@ import { useAgents } from "../agent/useAgents";
 import type { RepoRef, Stack } from "../lib/model";
 import type { Inbox } from "../lib/source";
 import { repoKey } from "../lib/model";
-import { local } from "../lib/platform";
+import { local, openUrl } from "../lib/platform";
+import { GitHubError } from "../lib/github";
 import { scoped } from "../lib/scope";
 import { pinId, pinStore, seenStore, usePinnedStacks, useSeen, type PinnedStack } from "../lib/homeStore";
 import { diffSince, markAllSeen, needsMyReview, stackId, type Change } from "../lib/sinceLast";
 import { progressLabel } from "../lib/stacks";
+import { AccountMenu } from "../ui/AccountMenu";
 import { AgentDot, ChecksLabel, ErrorBox, LayerStrip, LogoMark, Spinner, timeAgo } from "../ui/bits";
 
 export function Home() {
   const { route, go } = useNav();
-  const { org, orgs, setOrg, viewer, signOut, source } = useSession();
+  const { org, orgs, setOrg, source } = useSession();
   const section: HomeSection = route.name === "home" ? route.section ?? "review" : "review";
   const browsing = route.name === "home" ? route.repo : undefined;
   const [singles, setSingles] = useState(() => local.get("includeSingles", false));
@@ -100,14 +102,8 @@ export function Home() {
             </span>
           )) ?? <span className="muted">Checking…</span>}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-            {viewer?.avatarUrl ? (
-              <img src={viewer.avatarUrl} alt="" width={26} height={26} style={{ borderRadius: "50%" }} />
-            ) : (
-              <span aria-hidden="true" style={{ width: 26, height: 26, borderRadius: "50%", background: "#2b3a52", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600 }}>{viewer?.login.slice(0, 2).toUpperCase()}</span>
-            )}
-            <span style={{ flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis" }}>{viewer?.login}</span>
+            <AccountMenu />
             <button className="btn btn-sm btn-icon" aria-label="Settings" title="Settings" onClick={() => go({ name: "settings" })}>⚙</button>
-            <button className="btn btn-sm" onClick={signOut}>Sign out</button>
           </div>
         </div>
       </aside>
@@ -149,13 +145,29 @@ function matches(s: Stack, f: string) {
   return [s.title, s.repo.repo, s.author, ...s.layers.map((l) => `${l.pr.number} ${l.pr.title}`)].some((x) => x.toLowerCase().includes(q));
 }
 
+/** Shown instead of a silently empty inbox when the token can't see an org (SAML SSO not authorised). */
+function AccessNotice({ error }: { error?: unknown }) {
+  const source = useSource();
+  const { current } = useSession();
+  const issue = source.accessIssue?.() ?? (error instanceof GitHubError && error.ssoUrl ? { kind: "sso" as const, message: error.message, url: error.ssoUrl } : null);
+  if (!issue) return null;
+  return (
+    <div className="error-box" role="alert" style={{ display: "flex", flexDirection: "column", gap: 8, lineHeight: 1.5 }}>
+      <strong>Some of this organisation's data is hidden from {current ? `${current}'s` : "this"} token</strong>
+      <span>The organisation requires single sign-on, and this token hasn't been authorised for it, so stacks there won't appear. Authorise the token for SSO on GitHub, or switch to an account that has access.</span>
+      {issue.url && <div><button className="btn btn-sm" onClick={() => openUrl(issue.url!)}>Authorise on GitHub</button></div>}
+    </div>
+  );
+}
+
 function InboxList({ section, filter, inbox }: { section: HomeSection; filter: string; inbox: ReturnType<typeof useInbox> }) {
   const { org } = useSession();
   if (inbox.isPending) return <Spinner label={`Finding stacks in ${org}…`} />;
-  if (inbox.error) return <ErrorBox error={inbox.error} />;
+  if (inbox.error) return <><AccessNotice error={inbox.error} /><ErrorBox error={inbox.error} /></>;
   const list = (section === "mine" ? inbox.data.mine : inbox.data.needsReview).filter((s) => matches(s, filter));
   return (
     <>
+      <AccessNotice />
       {section === "review" && <SinceStrip inbox={inbox.data} />}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>{section === "mine" ? "My stacks" : "Needs your review"}</h1>

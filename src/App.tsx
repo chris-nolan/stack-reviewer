@@ -26,11 +26,11 @@ function Routes() {
 }
 
 export default function App() {
-  const { status } = useSession();
+  const { status, viewer } = useSession();
   if (status === "loading") return <div style={{ height: "100%", display: "grid", placeItems: "center" }}><Spinner label="Starting…" /></div>;
   if (status === "signed-out") return <SignIn />;
   return (
-    <NavProvider>
+    <NavProvider key={viewer?.login}>
       <CommandsProvider>
         <Notifier />
         <SeenRecorder />

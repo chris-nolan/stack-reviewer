@@ -36,10 +36,13 @@ pub fn run() {
         .manage(mcp::Mcp::default())
         .setup(|app| store::setup(app.handle()))
         .invoke_handler(tauri::generate_handler![
-            auth::auth_get_token,
-            auth::auth_save_token,
-            auth::auth_clear_token,
-            auth::auth_import_gh_token,
+            auth::auth_accounts,
+            auth::auth_account_token,
+            auth::auth_account_save,
+            auth::auth_account_select,
+            auth::auth_account_remove,
+            auth::auth_gh_accounts,
+            auth::auth_gh_token,
             auth::auth_device_start,
             auth::auth_device_poll,
             agent::agents_detect,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { homeDir } from "@tauri-apps/api/path";
-import { useSource } from "../../app/session";
+import { useSession, useSource } from "../../app/session";
 import { getAgentSession, useAgentSnapshot } from "../../agent/session";
 import { knownSettings, type AgentSetting } from "../../agent/settings";
 import { useAgents, type AgentInfo } from "../../agent/useAgents";
@@ -38,6 +38,7 @@ export function LaunchPopover({ stackId, openLayers, mode, onStart, onClose }: {
   onClose: () => void;
 }) {
   const source = useSource();
+  const login = useSession().viewer?.login ?? "";
   const demo = source.kind === "fixtures";
   const agentsQ = useAgents();
   const agents: AgentInfo[] = demo
@@ -46,7 +47,7 @@ export function LaunchPopover({ stackId, openLayers, mode, onStart, onClose }: {
   const [agentId, setAgentId] = useState(() => local.get("agent", "claude"));
   const agent = agents.find((a) => a.id === agentId && a.available) ?? agents.find((a) => a.available);
   if (demo && !knownSettings.get("claude").length) knownSettings.set("claude", DEMO_SETTINGS);
-  const session = useMemo(() => (agent ? getAgentSession(stackId, agent.id, agent.name) : null), [stackId, agent]);
+  const session = useMemo(() => (agent ? getAgentSession(login, stackId, agent.id, agent.name) : null), [login, stackId, agent]);
   const snap = useAgentSnapshot(session);
   const settings = demo && !snap.settings.length ? knownSettings.get(agent?.id ?? "claude") : snap.settings;
   const [chosen, setChosen] = useState<{ model?: string; effort?: string }>({});

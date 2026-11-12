@@ -70,7 +70,7 @@ Not designed yet: settings/agent setup, sign-in, the split diff layout, the "sin
 | Agents on day one | Claude Code (via `claude-agent-acp` adapter), Gemini CLI (native ACP) |
 | AI output | Chat + structured findings (severity, file:line, rationale, optional suggestion) → triage list + diff markers → accept as draft comment or dismiss |
 | Diff must-haves | Changes since my last review (interdiff); "viewed" synced to GitHub; split/unified views, expand context, syntax highlighting, file tree; keyboard-first navigation + command palette |
-| Accounts | github.com, one account, any org (defaults to the first org you belong to) |
+| Accounts | github.com, several accounts with an in-app switcher (sidebar menu, palette "Switch account…", Settings), any org (defaults to the first org you belong to). gh accounts are listed from `gh auth status` and their token is read fresh from gh on every use; device-flow and pasted-token accounts live in the keychain, one entry per login. The app never changes gh's active account. Local state (drafts, guides, pins, seen, agent chats and checkouts) is per account. |
 | Freshness | Background polling (~60s, ETag/conditional requests) + OS notifications |
 | Agent sandbox | Reads any file in the worktree; running commands needs in-app approval (allow once / always for this repo) |
 
@@ -78,7 +78,7 @@ Not designed yet: settings/agent setup, sign-in, the split diff layout, the "sin
 
 ### 1. Sign-in & settings
 - "Sign in with GitHub" via device flow (shows code, opens browser, polls). Token stored in the OS keychain.
-- Detect and offer an existing `gh` CLI session.
+- Detect and offer the `gh` CLI sessions (every logged-in account, not only gh's active one); add, switch and remove accounts in-app.
 - Handle SAML SSO: detect orgs whose access the token isn't authorised for, and link the user to authorise it.
 - Settings: default org, pinned repos, clone cache location, agent configs, notification preferences, theme.
 
@@ -156,7 +156,7 @@ React UI (Vite, TS)  ──Tauri IPC──  Rust core
 6. **Adapter packaging**: does the user install the agent CLIs themselves, or does the app detect them on PATH? Initial plan is to detect, with a configurable command.
 
 ## Out of scope for v1
-Merging layers or stacks · creating or restacking stacks · agent pushing commits · multiple accounts / GHES · Graphite/ghstack metadata · Codex and arbitrary ACP agents (planned for v1.1) · signed builds and auto-update.
+Merging layers or stacks · creating or restacking stacks · agent pushing commits · GHES · Graphite/ghstack metadata · Codex and arbitrary ACP agents (planned for v1.1) · signed builds and auto-update.
 
 ## Next: Guide me
 An agent-made orientation guide for a stack: a summary of the whole stack, relative complexity per layer, and where to focus in each layer. Spec in [guide-me.md](guide-me.md).

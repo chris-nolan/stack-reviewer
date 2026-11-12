@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from "react";
 import type { DraftComment, Finding } from "./model";
 import { durable } from "./durable";
+import { viewerKey } from "./scope";
 
 type PrState = { drafts: DraftComment[]; findings: Finding[]; brief?: { summary: string; readingOrder: string[]; agent: string }; summary?: string; /** Focus-area ids the reviewer ticked ("guide me"); kept across guide refreshes. */ focusDone?: string[] };
 type All = Record<string, PrState>;
@@ -21,7 +22,8 @@ function commit(next: All, changed: string) {
   listeners.forEach((l) => l());
 }
 
-export const prKey = (repo: { owner: string; repo: string }, number: number) => `${repo.owner}/${repo.repo}#${number}`;
+/** Row key for a PR's local review state: per signed-in login, so accounts never share drafts. */
+export const prKey = (repo: { owner: string; repo: string }, number: number) => viewerKey(`${repo.owner}/${repo.repo}#${number}`);
 
 function update(key: string, fn: (s: PrState) => PrState) {
   commit({ ...cur(), [key]: fn(cur()[key] ?? EMPTY) }, key);

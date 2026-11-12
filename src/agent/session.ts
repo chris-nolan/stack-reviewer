@@ -76,7 +76,7 @@ export class AgentSession {
   private layerNote: string | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(readonly agentId: string, readonly agentName: string, readonly stackId: string) {
+  constructor(readonly agentId: string, readonly agentName: string, readonly stackId: string, readonly viewer: string = "") {
     const saved = durable.get<Saved | null>("chat", this.storageKey, null);
     this.savedSessionId = saved?.sessionId ?? null;
     this.snap = { status: "idle", items: saved?.items ?? [], worktree: null, settings: presetSettings(agentId), layer: saved?.layer ?? null };
@@ -90,7 +90,7 @@ export class AgentSession {
   }
 
   private get storageKey() {
-    return `${this.stackId}|${this.agentId}`;
+    return agentSessionKey(this.viewer, this.stackId, this.agentId);
   }
 
   private save() {
@@ -448,14 +448,26 @@ Use new-side line numbers that appear in each layer's diff. The ranking lists ev
 const g = globalThis as typeof globalThis & { __stackReviewerAgentSessions?: Map<string, AgentSession> };
 const sessions = (g.__stackReviewerAgentSessions ??= new Map<string, AgentSession>());
 
-export function getAgentSession(stackId: string, agentId: string, agentName: string): AgentSession {
-  const key = `${stackId}|${agentId}`;
+/**
+ * Identity of an agent conversation: the signed-in login, the stack and the agent. It keys both the live
+ * session and its persisted chat, so two accounts never share a conversation (or, via the worktree slot,
+ * a checkout).
+ */
+export const agentSessionKey = (viewer: string, stackId: string, agentId: string) => `${viewer ? `${viewer}@` : ""}${stackId}|${agentId}`;
+
+export function getAgentSession(viewer: string, stackId: string, agentId: string, agentName: string): AgentSession {
+  const key = agentSessionKey(viewer, stackId, agentId);
   let s = sessions.get(key);
   if (!s) {
-    s = new AgentSession(agentId, agentName, stackId);
+    s = new AgentSession(agentId, agentName, stackId, viewer);
     sessions.set(key, s);
   }
   return s;
+}
+
+/** Stops every running agent (they hold the previous account's token for git). Chats stay saved under their account. */
+export async function stopAllAgentSessions(): Promise<void> {
+  await Promise.all([...sessions.values()].map((s) => s.stop().catch(() => {})));
 }
 
 export function useAgentSnapshot(s: AgentSession | null): Snapshot {

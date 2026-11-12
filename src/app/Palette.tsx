@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GROUP_ORDER, PALETTE_SHORTCUT, useCollectCommands, useCommands, usePalette, type Command } from "./commands";
 import { useInbox } from "./queries";
+import { useSession } from "./session";
+import { OPEN_ACCOUNT_MENU } from "../ui/AccountMenu";
 import { useNav, type RecentStack } from "./nav";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { pinId, usePinnedStacks } from "../lib/homeStore";
@@ -13,6 +15,7 @@ const MAX_RESULTS = 60;
 /** App-wide commands: navigation and every stack we know about (inbox, recent, pinned). */
 function useGlobalCommands() {
   const { go, up } = useNav();
+  const { accounts, current, switchAccount } = useSession();
   const inbox = useInbox(false);
   const pinned = usePinnedStacks();
   const open = usePalette().open;
@@ -30,6 +33,24 @@ function useGlobalCommands() {
   const commands: Command[] = [
     { id: "go-inbox", group: "Go to", title: "Go to inbox", keywords: "home stacks", run: () => up({ name: "home" }) },
     { id: "go-settings", group: "Go to", title: "Open settings", keywords: "preferences agents", run: () => go({ name: "settings" }) },
+    {
+      id: "switch-account",
+      group: "Actions",
+      title: "Switch account…",
+      keywords: "account login user sign in sign out add",
+      run: () => {
+        up({ name: "home" });
+        setTimeout(() => window.dispatchEvent(new Event(OPEN_ACCOUNT_MENU)), 60);
+      },
+    },
+    ...accounts.filter((a) => a.login !== current).map((a): Command => ({
+      id: `account:${a.login}`,
+      group: "Actions",
+      title: `Switch to ${a.login}`,
+      hint: "account",
+      keywords: "account switch",
+      run: () => void switchAccount(a.login).catch(() => {}),
+    })),
     ...[...stacks.entries()].map(([id, s]): Command => ({
       id: `stack:${id}`,
       group: "Stacks",

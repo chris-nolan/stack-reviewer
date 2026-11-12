@@ -3,12 +3,13 @@
 
 import { useSyncExternalStore } from "react";
 import { durable } from "./durable";
+import { viewerKey as gk } from "./scope";
 import { EMPTY_DOC, type GuideDoc, type GuideRun, type LayerGuide, type StackGuideBody } from "./guide";
 
 const listeners = new Set<() => void>();
 const deadViews = new WeakMap<GuideDoc, GuideDoc>();
 const empties = new Map<string, GuideDoc>();
-const doc = (stackId: string): GuideDoc => durable.get<GuideDoc | null>("guide", stackId, null) ?? emptyFor(stackId);
+const doc = (stackId: string): GuideDoc => durable.get<GuideDoc | null>("guide", gk(stackId), null) ?? emptyFor(stackId);
 function emptyFor(stackId: string): GuideDoc {
   let e = empties.get(stackId);
   if (!e) empties.set(stackId, (e = EMPTY_DOC(stackId)));
@@ -16,7 +17,7 @@ function emptyFor(stackId: string): GuideDoc {
 }
 
 function commit(stackId: string, next: GuideDoc) {
-  durable.set("guide", stackId, next);
+  durable.set("guide", gk(stackId), next);
   listeners.forEach((l) => l());
 }
 
@@ -29,15 +30,15 @@ export const guideStore = {
   /** The doc with a dead "running" run shown as stopped (the app quit or the agent died mid-run). */
   view(stackId: string): GuideDoc {
     const d = doc(stackId);
-    if (d.run?.status !== "running" || live.has(stackId)) return d;
+    if (d.run?.status !== "running" || live.has(gk(stackId))) return d;
     let v = deadViews.get(d);
     if (!v) deadViews.set(d, (v = { ...d, run: { ...d.run, status: "stopped" } }));
     return v;
   },
-  isLive: (stackId: string) => live.has(stackId),
+  isLive: (stackId: string) => live.has(gk(stackId)),
 
   startRun(stackId: string, run: Omit<GuideRun, "status" | "startedAt">) {
-    live.add(stackId);
+    live.add(gk(stackId));
     commit(stackId, { ...doc(stackId), run: { ...run, status: "running", startedAt: Date.now() } });
   },
   markReading(stackId: string, pr: number) {
@@ -53,11 +54,11 @@ export const guideStore = {
   setStack(stackId: string, body: StackGuideBody) {
     const d = doc(stackId);
     commit(stackId, { ...d, stack: body, run: d.run?.status === "running" && !d.run.pending.length ? { ...d.run, status: "done", reading: undefined } : d.run });
-    if (!doc(stackId).run || doc(stackId).run!.status !== "running") live.delete(stackId);
+    if (!doc(stackId).run || doc(stackId).run!.status !== "running") live.delete(gk(stackId));
   },
   finishRun(stackId: string, status: GuideRun["status"], error?: string) {
     const d = doc(stackId);
-    live.delete(stackId);
+    live.delete(gk(stackId));
     if (!d.run || d.run.status !== "running") return;
     commit(stackId, { ...d, run: { ...d.run, status, error, reading: undefined } });
   },
@@ -68,8 +69,8 @@ export const guideStore = {
     commit(stackId, { ...d, layers });
   },
   clear(stackId: string) {
-    live.delete(stackId);
-    durable.delete("guide", stackId);
+    live.delete(gk(stackId));
+    durable.delete("guide", gk(stackId));
     listeners.forEach((l) => l());
   },
   /** Replace the whole doc (demo seeding). */

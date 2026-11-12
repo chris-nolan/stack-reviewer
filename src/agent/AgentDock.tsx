@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Layer, RepoRef, Stack } from "../lib/model";
 import { repoKey } from "../lib/model";
+import { useSession } from "../app/session";
 import { isTauri, local } from "../lib/platform";
 import { AgentDot } from "../ui/bits";
 import { Markdown } from "../ui/Markdown";
@@ -27,11 +28,12 @@ type Props = {
 
 export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNextFinding, onClose, request, onRequestHandled }: Props) {
   const agents = useAgents();
+  const login = useSession().viewer?.login ?? "";
   const available = agents.data?.filter((a) => a.available) ?? [];
   const [agentId, setAgentId] = useState<string>(() => local.get("agent", "claude"));
   const agent = available.find((a) => a.id === agentId) ?? available[0];
   const stackId = `${repoKey(repo)}#${stack.key}`;
-  const session = useMemo(() => (agent ? getAgentSession(stackId, agent.id, agent.name) : null), [stackId, agent]);
+  const session = useMemo(() => (agent ? getAgentSession(login, stackId, agent.id, agent.name) : null), [login, stackId, agent]);
   const snap = useAgentSnapshot(session);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
