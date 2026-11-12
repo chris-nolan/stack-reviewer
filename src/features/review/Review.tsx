@@ -15,6 +15,7 @@ import { prKey, reviewStore, useReviewState } from "../../lib/reviewStore";
 import { Markdown } from "../../ui/Markdown";
 import { checkRunState, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing, Spinner } from "../../ui/bits";
 import { ChecksDialog, FinishDialog } from "./Dialogs";
+import { FindingsPanel } from "./FindingsPanel";
 import { DiffView } from "./DiffView";
 import { Margin } from "./Margin";
 
@@ -78,6 +79,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const [finishOpen, setFinishOpen] = useState(false);
   const [checksOpen, setChecksOpen] = useState<number | null | false>(false);
   const [agentRequest, setAgentRequest] = useState<AgentRequest | null>(null);
+  const [findingsOpen, setFindingsOpen] = useState(false);
   const [path, setPath] = useState<string | null>(initialFile ?? null);
   const [focusLine, setFocusLine] = useState<number | null>(initialLine ?? null);
   const [composerLine, setComposerLine] = useState<number | null>(null);
@@ -154,7 +156,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement;
-    if (e.metaKey || e.ctrlKey || e.altKey || finishOpen || checksOpen !== false) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || finishOpen || findingsOpen || checksOpen !== false) return;
     if (t.closest("input, textarea, select, [contenteditable=true]")) return;
     const k = e.key;
     if (k === "j") markViewedAndNext();
@@ -214,6 +216,11 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
         <button className="btn" onClick={() => up({ name: "overview", repo, stackKey: stack.key })}><ChevronLeft /> Overview</button>
         <nav aria-label="Breadcrumb" className="crumbs"><span>{repo.repo}</span><span aria-hidden="true">›</span><span>{stack.title}</span><span aria-hidden="true">›</span><span className="here">#{layer.pr.number}</span></nav>
         <div className="spacer" />
+        {review.findings.length > 0 && (
+          <button className={openFindings.length ? "btn btn-agent" : "btn"} onClick={() => setFindingsOpen(true)} title="All agent findings on this layer">
+            Findings · {openFindings.length ? `${openFindings.length} to triage` : review.findings.length}
+          </button>
+        )}
         <button className="btn btn-soft" onClick={() => setFinishOpen(true)}>Pending review · {review.drafts.length} {review.drafts.length === 1 ? "draft" : "drafts"}</button>
         <button className={dockOpen ? "btn btn-agent" : "btn"} aria-pressed={dockOpen} onClick={() => setDockOpen((o) => !o)}>
           <span className="dot" style={{ background: "var(--ok)" }} aria-hidden="true" /> Agent <span className="kbd">a</span>
@@ -396,14 +403,14 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                         onSaveComment={(l, body) => { reviewStore.addDraft(key, { path: current.path, line: l, body, source: "me" }); setComposerLine(null); }}
                       />
                     </div>
-                    {showMargin && <div style={{ flex: "0 0 290px", borderLeft: "1px solid var(--border)", minHeight: 0 }}>
+                    {showMargin && <div style={{ flex: "0 0 290px", width: 290, minWidth: 0, overflow: "hidden", borderLeft: "1px solid var(--border)", minHeight: 0 }}>
                       <Margin
                         findings={findingsHere}
                         threads={threadsHere}
                         drafts={draftsHere}
                         focusLine={focusLine}
                         onFocus={setFocusLine}
-                        onFinding={(id, status) => reviewStore.setFindingStatus(key, id, status)}
+                        onFinding={(id, status, body) => reviewStore.setFindingStatus(key, id, status, body)}
                         onEditDraft={(id, body) => reviewStore.editDraft(key, id, body)}
                         onRemoveDraft={(id) => reviewStore.removeDraft(key, id)}
                         onReply={async (id, body) => { await source.replyToThread(id, body); await threadsQ.refetch(); }}
@@ -440,6 +447,21 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
           layer={layer} drafts={review.drafts} viewed={viewedCount} total={layerFiles.length} openFindings={openFindings.length}
           nextLayer={next} summary={review.summary ?? ""} isOwn={layer.pr.author.toLowerCase() === me.toLowerCase()}
           onClose={() => setFinishOpen(false)} onSubmit={submit}
+          onEditDraft={(id, body) => reviewStore.editDraft(key, id, body)}
+          onRemoveDraft={(id) => reviewStore.removeDraft(key, id)}
+          onReviewFindings={() => { setFinishOpen(false); setFindingsOpen(true); }}
+        />
+      )}
+      {findingsOpen && (
+        <FindingsPanel
+          pr={layer.pr.number}
+          findings={review.findings}
+          drafts={review.drafts}
+          fileOrder={ordered.map((f) => f.path)}
+          onJump={(f) => { setFindingsOpen(false); setMode("layer"); selectFile(f.path, f.line); }}
+          onStatus={(id, status, body) => reviewStore.setFindingStatus(key, id, status, body)}
+          onEditDraft={(id, body) => reviewStore.editDraft(key, id, body)}
+          onClose={() => setFindingsOpen(false)}
         />
       )}
       {checksOpen !== false && checksQ.data && <ChecksDialog repo={repo} checks={checksQ.data} initial={checksOpen} onClose={() => setChecksOpen(false)} />}

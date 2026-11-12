@@ -3,9 +3,11 @@ import { useJobLog } from "../../app/queries";
 import { useSource } from "../../app/session";
 import type { CheckRun, DraftComment, Layer, RepoRef, ReviewEvent } from "../../lib/model";
 import { failureExcerpt } from "../../lib/logs";
+import { Markdown } from "../../ui/Markdown";
+import { DraftEditor } from "./Notes";
 import { checkRunState, CHECK_STYLE, ErrorBox, Spinner } from "../../ui/bits";
 
-function Modal({ label, onClose, children, width = 560 }: { label: string; onClose: () => void; children: React.ReactNode; width?: number }) {
+export function Modal({ label, onClose, children, width = 560 }: { label: string; onClose: () => void; children: React.ReactNode; width?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -35,10 +37,11 @@ function Modal({ label, onClose, children, width = 560 }: { label: string; onClo
 }
 
 export function FinishDialog({
-  layer, drafts, viewed, total, openFindings, nextLayer, summary, isOwn, onClose, onSubmit,
+  layer, drafts, viewed, total, openFindings, nextLayer, summary, isOwn, onClose, onSubmit, onEditDraft, onRemoveDraft, onReviewFindings,
 }: {
   layer: Layer; drafts: DraftComment[]; viewed: number; total: number; openFindings: number; nextLayer: Layer | null; summary: string;
   isOwn: boolean; onClose: () => void; onSubmit: (event: ReviewEvent, body: string) => Promise<void>;
+  onEditDraft: (id: string, body: string) => void; onRemoveDraft: (id: string) => void; onReviewFindings: () => void;
 }) {
   const isMine = isOwn; // GitHub only allows comment reviews on your own PRs
   const [event, setEvent] = useState<ReviewEvent>(isOwn ? "COMMENT" : drafts.length ? "REQUEST_CHANGES" : "APPROVE");
@@ -63,8 +66,14 @@ export function FinishDialog({
       <div style={{ display: "flex", flexDirection: "column", gap: 4, color: "var(--text-2)" }}>
         <span>{viewed} of {total} files viewed</span>
         <span>{drafts.length} draft {drafts.length === 1 ? "comment" : "comments"} will be published</span>
-        {openFindings > 0 && <span className="muted">{openFindings} agent {openFindings === 1 ? "finding" : "findings"} not triaged (they stay private)</span>}
+        {openFindings > 0 && (
+          <span className="muted">
+            {openFindings} agent {openFindings === 1 ? "finding" : "findings"} not triaged (they stay private) ·{" "}
+            <button className="btn btn-sm" style={{ padding: "0 6px" }} onClick={onReviewFindings}>Triage</button>
+          </span>
+        )}
       </div>
+      {drafts.length > 0 && <DraftList drafts={drafts} onEdit={onEditDraft} onRemove={onRemoveDraft} />}
       <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <legend className="sr-only">Verdict</legend>
         {([["COMMENT", "Comment"], ["APPROVE", "Approve"], ["REQUEST_CHANGES", "Request changes"]] as const).map(([v, label]) => (
@@ -83,6 +92,31 @@ export function FinishDialog({
         </button>
       </div>
     </Modal>
+  );
+}
+
+function DraftList({ drafts, onEdit, onRemove }: { drafts: DraftComment[]; onEdit: (id: string, body: string) => void; onRemove: (id: string) => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const sorted = [...drafts].sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+  return (
+    <section aria-label="Comments to publish" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "34vh", overflow: "auto", padding: 2 }}>
+      {sorted.map((d) => (
+        <div key={d.id} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.path}>{d.path.split("/").pop()}:{d.line}</span>
+            <span className="pill" style={{ fontSize: 10.5, background: d.source === "agent" ? "var(--agent-bg)" : "var(--accent-soft-bg)", color: d.source === "agent" ? "var(--agent)" : "var(--accent-soft-fg)" }}>{d.source === "agent" ? "from agent" : "yours"}</span>
+            <span className="spacer" />
+            {editing !== d.id && <button className="btn btn-sm" onClick={() => setEditing(d.id)}>Edit</button>}
+            <button className="btn btn-sm" onClick={() => onRemove(d.id)}>Remove</button>
+          </div>
+          {editing === d.id ? (
+            <DraftEditor initial={d.body} onCancel={() => setEditing(null)} onSave={(b) => { onEdit(d.id, b); setEditing(null); }} />
+          ) : (
+            <div style={{ maxHeight: 120, overflow: "hidden" }}><Markdown text={d.body} compact /></div>
+          )}
+        </div>
+      ))}
+    </section>
   );
 }
 

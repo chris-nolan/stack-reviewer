@@ -24,6 +24,12 @@ function update(key: string, fn: (s: PrState) => PrState) {
   commit({ ...state, [key]: fn(state[key] ?? EMPTY) });
 }
 
+/** The comment text a finding becomes when drafted, before any edits. */
+export function findingDraftBody(f: Finding): string {
+  const body = f.suggestion ? `${f.body}\n\n\`\`\`suggestion\n${f.suggestion}\n\`\`\`` : f.body;
+  return `**${f.title}**\n\n${body}`;
+}
+
 export const reviewStore = {
   get: (key: string): PrState => state[key] ?? EMPTY,
   addDraft(key: string, d: Omit<DraftComment, "id">) {
@@ -50,14 +56,14 @@ export const reviewStore = {
     update(key, (s) => ({ ...s, findings: [...s.findings, finding] }));
     return finding;
   },
-  setFindingStatus(key: string, id: string, status: Finding["status"]) {
+  /** Open, dismiss or draft a finding. Drafting creates a pending comment, optionally with edited text. */
+  setFindingStatus(key: string, id: string, status: Finding["status"], body?: string) {
     update(key, (s) => {
       const f = s.findings.find((x) => x.id === id);
       if (!f) return s;
       let drafts = s.drafts.filter((d) => d.findingId !== id);
       if (status === "drafted") {
-        const body = f.suggestion ? `${f.body}\n\n\`\`\`suggestion\n${f.suggestion}\n\`\`\`` : f.body;
-        drafts = [...drafts, { id: crypto.randomUUID(), path: f.path, line: f.line, body: `**${f.title}**\n\n${body}`, source: "agent", findingId: id }];
+        drafts = [...drafts, { id: crypto.randomUUID(), path: f.path, line: f.line, body: body ?? findingDraftBody(f), source: "agent", findingId: id }];
       }
       return { ...s, drafts, findings: s.findings.map((x) => (x.id === id ? { ...x, status } : x)) };
     });

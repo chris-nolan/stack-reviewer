@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { DraftComment, Finding, ReviewThread } from "../../lib/model";
-import { SEVERITY_STYLE, timeAgo } from "../../ui/bits";
+import { timeAgo } from "../../ui/bits";
+import { DraftEditor, FindingCard } from "./Notes";
 import { Markdown } from "../../ui/Markdown";
 
 type Props = {
@@ -9,7 +10,7 @@ type Props = {
   drafts: DraftComment[];
   focusLine: number | null;
   onFocus: (line: number) => void;
-  onFinding: (id: string, status: Finding["status"]) => void;
+  onFinding: (id: string, status: Finding["status"], body?: string) => void;
   onEditDraft: (id: string, body: string) => void;
   onRemoveDraft: (id: string) => void;
   onReply: (threadId: string, body: string) => Promise<void>;
@@ -37,7 +38,19 @@ export function Margin(p: Props) {
         </p>
       )}
       {notes.map((n) =>
-        n.kind === "finding" ? <FindingCard key={n.f.id} f={n.f} focused={p.focusLine === n.line} {...p} />
+        n.kind === "finding" ? (
+          <FindingCard
+            key={n.f.id}
+            f={n.f}
+            draft={p.drafts.find((d) => d.findingId === n.f.id)}
+            focused={p.focusLine === n.line}
+            onJump={() => p.onFocus(n.f.line)}
+            onDraft={(body) => p.onFinding(n.f.id, "drafted", body)}
+            onDismiss={() => p.onFinding(n.f.id, "dismissed")}
+            onReopen={() => p.onFinding(n.f.id, "open")}
+            onEditDraft={p.onEditDraft}
+          />
+        )
           : n.kind === "thread" ? <ThreadCard key={n.t.id} t={n.t} {...p} />
           : <DraftCard key={n.d.id} d={n.d} {...p} />,
       )}
@@ -50,33 +63,6 @@ function LineButton({ line, onFocus, children }: { line: number; onFocus: (l: nu
     <button onClick={() => onFocus(line)} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: 0, border: 0, background: "transparent", textAlign: "left" }}>
       {children}
     </button>
-  );
-}
-
-function FindingCard({ f, focused, onFocus, onFinding }: Props & { f: Finding; focused: boolean }) {
-  const s = SEVERITY_STYLE[f.severity];
-  return (
-    <article style={{ padding: 10, borderRadius: 10, border: `1px solid ${focused ? s.fg : s.bd}`, background: focused ? "#1c1a17" : "#17181b", display: "flex", flexDirection: "column", gap: 6, opacity: f.status === "dismissed" ? 0.55 : 1 }}>
-      <LineButton line={f.line} onFocus={onFocus}>
-        <span className="pill" style={{ background: s.bg, color: s.fg, fontWeight: 600, fontSize: 11 }}>{f.severity}</span>
-        <span className="mono muted" style={{ fontSize: 12 }}>L{f.line}</span>
-        <span className="muted" style={{ fontSize: 12 }}>{f.agent}</span>
-      </LineButton>
-      <strong style={{ fontWeight: 600, lineHeight: 1.35 }}>{f.title}</strong>
-      <Markdown text={f.body} compact />
-      {f.suggestion && <div className="mono" style={{ fontSize: 11.5, padding: "6px 8px", borderRadius: 6, background: "var(--add-bg)", color: "var(--add-fg)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>+ {f.suggestion}</div>}
-      {f.status === "open" ? (
-        <div style={{ display: "flex", gap: 6 }}>
-          <button className="btn btn-primary btn-sm" onClick={() => onFinding(f.id, "drafted")}>Draft</button>
-          <button className="btn btn-sm" onClick={() => onFinding(f.id, "dismissed")}>Dismiss</button>
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }} className="muted">
-          <span>{f.status === "drafted" ? "Draft comment added" : "Dismissed"}</span>
-          <button className="btn btn-sm" onClick={() => onFinding(f.id, "open")}>Undo</button>
-        </div>
-      )}
-    </article>
   );
 }
 
@@ -116,25 +102,22 @@ function ThreadCard({ t, onFocus, onReply, onResolve }: Props & { t: ReviewThrea
 
 function DraftCard({ d, onFocus, onEditDraft, onRemoveDraft }: Props & { d: DraftComment }) {
   const [editing, setEditing] = useState(false);
-  const [body, setBody] = useState(d.body);
   return (
     <article style={{ padding: 10, borderRadius: 10, border: "1px solid var(--accent-soft-bd)", background: "#141b26", display: "flex", flexDirection: "column", gap: 6 }}>
       <LineButton line={d.line} onFocus={onFocus}>
         <span className="mono muted" style={{ fontSize: 12 }}>L{d.line} · your draft</span>
       </LineButton>
       {editing ? (
-        <textarea className="input" rows={3} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Edit draft" />
+        <DraftEditor initial={d.body} onCancel={() => setEditing(false)} onSave={(body) => { onEditDraft(d.id, body); setEditing(false); }} />
       ) : (
-        <Markdown text={d.body} compact />
+        <>
+          <Markdown text={d.body} compact />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn btn-sm" onClick={() => setEditing(true)}>Edit</button>
+            <button className="btn btn-sm" onClick={() => onRemoveDraft(d.id)}>Delete</button>
+          </div>
+        </>
       )}
-      <div style={{ display: "flex", gap: 6 }}>
-        {editing ? (
-          <button className="btn btn-sm btn-primary" onClick={() => { onEditDraft(d.id, body); setEditing(false); }}>Save</button>
-        ) : (
-          <button className="btn btn-sm" onClick={() => setEditing(true)}>Edit</button>
-        )}
-        <button className="btn btn-sm" onClick={() => onRemoveDraft(d.id)}>Delete</button>
-      </div>
     </article>
   );
 }

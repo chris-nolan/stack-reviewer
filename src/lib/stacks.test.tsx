@@ -290,7 +290,7 @@ describe("navigation history", () => {
   const ov: Route = { name: "overview", repo: r, stackKey: "n1" };
   const rev = (layer: number): Route => ({ name: "review", repo: r, stackKey: "n1", layer });
   it("Inbox from the overview after a review goes home, not back to the review", () => {
-    let h = [home];
+    let h: Route[] = [home];
     h = pushRoute(h, ov);
     h = pushRoute(h, rev(1));
     h = upRoute(h, ov); // review's Overview button
@@ -309,5 +309,31 @@ describe("navigation history", () => {
     expect(h).toEqual([home, rev(2), ov]);
     expect(upRoute(h, { name: "home" })).toEqual([home]);
     expect(upRoute([rev(1)], { name: "home" })).toEqual([{ name: "home" }]);
+  });
+});
+
+import { findingDraftBody, reviewStore } from "./reviewStore";
+describe("review store: findings to drafts", () => {
+  const key = "t/t#1";
+  const base = { pr: 1, path: "a.ts", line: 4, severity: "High" as const, title: "Unbounded map", body: "Never evicts.", agent: "Claude Code" };
+  it("drafts with the default text or edited text, and undo restores the finding", () => {
+    const f = reviewStore.addFinding(key, { ...base, suggestion: "const m = new LRU();" });
+    reviewStore.setFindingStatus(key, f.id, "drafted");
+    let st = reviewStore.get(key);
+    expect(st.drafts.find((d) => d.findingId === f.id)?.body).toBe(findingDraftBody(f));
+    expect(findingDraftBody(f)).toContain("```suggestion\nconst m = new LRU();\n```");
+
+    reviewStore.setFindingStatus(key, f.id, "open");
+    expect(reviewStore.get(key).drafts.some((d) => d.findingId === f.id)).toBe(false);
+
+    reviewStore.setFindingStatus(key, f.id, "drafted", "Please bound this map.");
+    st = reviewStore.get(key);
+    const d = st.drafts.find((x) => x.findingId === f.id)!;
+    expect(d.body).toBe("Please bound this map.");
+    reviewStore.editDraft(key, d.id, "Please bound this map (LRU?).");
+    expect(reviewStore.get(key).drafts.find((x) => x.id === d.id)?.body).toBe("Please bound this map (LRU?).");
+
+    reviewStore.removeDraft(key, d.id); // removing the comment puts the finding back to open
+    expect(reviewStore.get(key).findings.find((x) => x.id === f.id)?.status).toBe("open");
   });
 });
