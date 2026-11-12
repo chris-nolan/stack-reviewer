@@ -4,7 +4,7 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
-  InitializeResponse, McpServer, NewSessionResponse, PromptResponse, RequestPermissionRequest,
+  InitializeResponse, LoadSessionResponse, McpServer, NewSessionResponse, PromptResponse, RequestPermissionRequest,
   RequestPermissionResponse, SessionConfigOption, SessionNotification,
 } from "@agentclientprotocol/sdk";
 import { invoke } from "../lib/platform";
@@ -85,6 +85,15 @@ export class AcpConnection {
 
   setMode(sessionId: string, modeId: string): Promise<unknown> {
     return this.request("session/set_mode", { sessionId, modeId });
+  }
+
+  get supportsLoad(): boolean {
+    return !!this.init?.agentCapabilities?.loadSession;
+  }
+
+  /** Resumes an earlier session. The agent replays its history as session/update notifications. */
+  loadSession(sessionId: string, cwd: string, mcpServers: McpServer[]): Promise<LoadSessionResponse> {
+    return this.request<LoadSessionResponse>("session/load", { sessionId, cwd, mcpServers });
   }
 
   prompt(sessionId: string, text: string): Promise<PromptResponse> {

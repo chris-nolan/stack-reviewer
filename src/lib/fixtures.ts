@@ -133,6 +133,13 @@ export class FixtureSource implements DataSource {
     return delay([{ path: "src/config/tenants.ts", status: "added", additions: 4, deletions: 0, viewed: false,
       patch: "@@ -0,0 +1,4 @@\n+export const tenantLimits: Record<string, number> = {\n+  'strategy-team': 500,\n+  default: 100,\n+};" }]);
   }
+  fileText(_r: RepoRef, ref: string, path: string): Promise<string | null> {
+    // Demo data has no repository, so only files added by a layer can be rebuilt (from their patch).
+    const pr = PRS.find((p) => p.headSha === ref);
+    const f = pr && FILES[pr.number]?.find((x) => x.path === path);
+    if (!f?.patch || f.status !== "added") return delay(null);
+    return delay(f.patch.split("\n").filter((l) => l.startsWith("+")).map((l) => l.slice(1)).join("\n") + "\n");
+  }
   gitToken() { return null; }
   threads(_r: RepoRef, n: number) { return delay(this.threadState[n] ?? []); }
   checks(_r: RepoRef, sha: string) {

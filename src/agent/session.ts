@@ -1,10 +1,13 @@
-// One agent conversation per (stack, agent). Owns the ACP connection and the chat transcript.
+// One continuous agent conversation per (stack, agent). The agent works in a single checkout that
+// moves between layers; when you move to another layer, the next message tells the agent and a
+// divider marks it in the transcript. Transcripts are saved and agent sessions resumed on restart.
 
 import type { RequestPermissionRequest, RequestPermissionResponse, SessionNotification } from "@agentclientprotocol/sdk";
 import { useSyncExternalStore } from "react";
 import { AcpConnection } from "./acp";
-import { parseFindingBlocks, reviewBridge } from "./bridge";
-import { setActiveAgentName, startMcpServer } from "./mcpServer";
+import { agentContexts, parseFindingBlocks, reviewBridge } from "./bridge";
+import { startMcpServer } from "./mcpServer";
+import { local } from "../lib/platform";
 import { knownSettings, prefs, readSettings, type AgentSetting, type SessionState, type SettingKind } from "./settings";
 
 export type ChatItem =
@@ -13,11 +16,18 @@ export type ChatItem =
   | { kind: "thought"; id: string; text: string }
   | { kind: "tool"; id: string; toolCallId: string; title: string; status: string }
   | { kind: "permission"; id: string; title: string; options: { optionId: string; name: string; kind: string }[]; chosen?: string }
-  | { kind: "notice"; id: string; text: string; tone: "info" | "error" };
+  | { kind: "notice"; id: string; text: string; tone: "info" | "error" }
+  | { kind: "divider"; id: string; text: string };
+
+/** The layer the conversation is currently working on. */
+export type LayerRef = { index: number; total: number; pr: number; title: string; headSha: string; baseSha?: string };
 
 export type AgentStatus = "idle" | "starting" | "ready" | "busy" | "error" | "stopped";
 
-type Snapshot = { status: AgentStatus; items: ChatItem[]; worktree: string | null; settings: AgentSetting[] };
+type Snapshot = { status: AgentStatus; items: ChatItem[]; worktree: string | null; settings: AgentSetting[]; layer: LayerRef | null };
+
+type Saved = { items: ChatItem[]; sessionId: string | null; layer: LayerRef | null };
+const MAX_SAVED_ITEMS = 400;
 
 /** Known settings with the reviewer's preferences applied, for display before a session runs. */
 function presetSettings(agentId: string): AgentSetting[] {
@@ -27,6 +37,25 @@ function presetSettings(agentId: string): AgentSetting[] {
 
 const uid = () => crypto.randomUUID();
 
+const OWN_PREFIXES = ["mcp__stack-reviewer__", "stack-reviewer__", "stack-reviewer/", "stack-reviewer:"];
+export const isOwnTool = (title: string | null | undefined) => !!title && OWN_PREFIXES.some((p) => title.toLowerCase().startsWith(p));
+
+const OWN_LABELS: Record<string, string> = {
+  get_review_context: "Read the review context",
+  get_check_failures: "Read failing check logs",
+  add_finding: "Recorded a finding",
+  set_layer_brief: "Wrote the layer summary",
+  set_review_summary: "Drafted the review summary",
+};
+
+/** "mcp__stack-reviewer__add_finding" → "Recorded a finding"; other MCP tools → "server: tool name". */
+export function toolLabel(title: string): string {
+  const m = /^mcp__([^_]+(?:-[^_]+)*)__(.+)$/.exec(title);
+  if (!m) return title;
+  if (m[1] === "stack-reviewer") return OWN_LABELS[m[2]] ?? m[2].replace(/_/g, " ");
+  return `${m[1]}: ${m[2].replace(/_/g, " ")}`;
+}
+
 export class AgentSession {
   private conn: AcpConnection | null = null;
   private sessionId: string | null = null;
@@ -34,9 +63,32 @@ export class AgentSession {
   private permissionWaiters = new Map<string, (r: RequestPermissionResponse) => void>();
   private usesMcp = false;
   private snap: Snapshot;
+  private readonly token = uid();
+  private savedSessionId: string | null;
+  private replaying = false;
+  /** Set when the reviewer moved to another layer; sent ahead of the next message. */
+  private layerNote: string | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(readonly agentId: string, readonly agentName: string) {
-    this.snap = { status: "idle", items: [], worktree: null, settings: presetSettings(agentId) };
+  constructor(readonly agentId: string, readonly agentName: string, readonly stackId: string) {
+    const saved = local.get<Saved | null>(this.storageKey, null);
+    this.savedSessionId = saved?.sessionId ?? null;
+    this.snap = { status: "idle", items: saved?.items ?? [], worktree: null, settings: presetSettings(agentId), layer: saved?.layer ?? null };
+    agentContexts.set(this.token, { stackId, agentName, activePr: () => this.snap.layer?.pr ?? null });
+  }
+
+  private get storageKey() {
+    return `chat.${this.stackId}|${this.agentId}`;
+  }
+
+  private save() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      const items = this.snap.items.slice(-MAX_SAVED_ITEMS).map((i) =>
+        i.kind === "permission" && !i.chosen ? { ...i, chosen: "expired" } : i.kind === "thought" ? { ...i, text: i.text.slice(0, 2000) } : i,
+      );
+      local.set(this.storageKey, { items, sessionId: this.sessionId ?? this.savedSessionId, layer: this.snap.layer } satisfies Saved);
+    }, 500);
   }
 
   subscribe = (cb: () => void) => {
@@ -48,6 +100,7 @@ export class AgentSession {
   private set(patch: Partial<Snapshot>) {
     this.snap = { ...this.snap, ...patch };
     this.listeners.forEach((l) => l());
+    if ("items" in patch || "layer" in patch) this.save();
   }
   private push(item: ChatItem) {
     this.set({ items: [...this.snap.items, item] });
@@ -79,15 +132,39 @@ export class AgentSession {
       await conn.start(this.agentId, worktree);
       const mcpServers = [];
       if (conn.supportsHttpMcp) {
-        mcpServers.push({ type: "http" as const, name: "stack-reviewer", url: await startMcpServer(), headers: [] });
+        mcpServers.push({ type: "http" as const, name: "stack-reviewer", url: await startMcpServer(), headers: [{ name: "x-sr-session", value: this.token }] });
         this.usesMcp = true;
       }
-      const s = await conn.newSession(worktree, mcpServers);
       this.conn = conn;
-      this.sessionId = s.sessionId;
-      await this.configure(s as SessionState);
+      let state: SessionState | null = null;
+      if (this.savedSessionId && conn.supportsLoad) {
+        // Resume the agent's own memory of this conversation. It replays history as updates,
+        // which we already have on screen, so ignore them while it does.
+        this.replaying = true;
+        try {
+          state = (await conn.loadSession(this.savedSessionId, worktree, mcpServers)) as SessionState;
+          this.sessionId = this.savedSessionId;
+        } catch {
+          state = null;
+        } finally {
+          this.replaying = false;
+        }
+      }
+      if (!state) {
+        const s = await conn.newSession(worktree, mcpServers);
+        if (this.snap.items.some((i) => i.kind === "user")) {
+          this.notice(`${this.agentName} started a fresh session and doesn't remember the conversation above.`);
+          this.layerNote = null; // the review prompt or next message sets context afresh
+        }
+        this.sessionId = s.sessionId;
+        state = s as SessionState;
+      }
+      this.savedSessionId = this.sessionId;
+      await this.configure(state);
       this.set({ status: "ready" });
+      this.save();
     } catch (e) {
+      this.conn = null;
       await conn.dispose();
       this.set({ status: "error" });
       this.notice(`Couldn't start ${this.agentName}: ${e instanceof Error ? e.message : String(e)}`, "error");
@@ -175,15 +252,49 @@ export class AgentSession {
     }
   }
 
+  /**
+   * Point the conversation at a layer. The worktree must already be checked out there.
+   * Adds a divider, and the next message tells the agent it has moved.
+   */
+  moveTo(layer: LayerRef) {
+    const cur = this.snap.layer;
+    if (cur && cur.pr === layer.pr && cur.headSha === layer.headSha) return;
+    const label = `Layer ${layer.index} of ${layer.total} · #${layer.pr} ${layer.title}`;
+    const hasHistory = this.snap.items.some((i) => i.kind === "user");
+    if (hasHistory) {
+      this.push({ kind: "divider", id: uid(), text: cur?.pr === layer.pr ? `${label} · new commits` : label });
+      this.layerNote = cur?.pr === layer.pr
+        ? `(Note: #${layer.pr} has new commits; the working directory is now at ${layer.headSha.slice(0, 12)}. Call get_review_context again before relying on earlier reading.)`
+        : `(Note: we've moved to layer ${layer.index} of ${layer.total}, #${layer.pr} "${layer.title}". The working directory is now checked out at its head ${layer.headSha.slice(0, 12)}${layer.baseSha ? `, base ${layer.baseSha.slice(0, 12)}` : ""}. Your review tools now default to this layer. Earlier layers are in the base; keep what you learned about them in mind.)`;
+    }
+    this.set({ layer });
+  }
+
+  /** Forget this conversation and start a new one next time. */
+  async reset() {
+    await this.stop(false);
+    this.savedSessionId = null;
+    this.layerNote = null;
+    this.set({ status: "idle", items: [], layer: null });
+    local.set(this.storageKey, null);
+  }
+
+  get running(): boolean {
+    return !!this.conn && !!this.sessionId;
+  }
+
   async send(text: string, display = text): Promise<void> {
     if (!this.conn || !this.sessionId) throw new Error("Agent is not running");
-    setActiveAgentName(this.agentName);
+    if (this.layerNote) {
+      text = `${this.layerNote}\n\n${text}`;
+      this.layerNote = null;
+    }
     this.push({ kind: "user", id: uid(), text: display });
     this.set({ status: "busy" });
     const firstNew = this.snap.items.length;
     try {
       const res = await this.conn.prompt(this.sessionId, this.usesMcp ? text : `${text}\n\n${FALLBACK_FORMAT}`);
-      if (!this.usesMcp) this.harvestFindings(firstNew);
+      if (!this.usesMcp) await this.harvestFindings(firstNew);
       if (res.stopReason === "refusal") this.notice(`${this.agentName} declined this request.`);
       if (res.stopReason === "max_tokens" || res.stopReason === "max_turn_requests") this.notice(`${this.agentName} hit its limit before finishing.`);
     } catch (e) {
@@ -218,16 +329,23 @@ export class AgentSession {
   }
 
   private onPermission(r: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+    // Stack Reviewer's own MCP tools only read the review and record draft findings, so the
+    // agent may always use them. Everything else (shell commands, edits, other MCP servers) asks.
+    if (isOwnTool(r.toolCall.title) || isOwnTool((r.toolCall as { rawInput?: { name?: string } }).rawInput?.name)) {
+      const allow = r.options.find((o) => o.kind === "allow_always") ?? r.options.find((o) => o.kind === "allow_once");
+      if (allow) return Promise.resolve({ outcome: { outcome: "selected", optionId: allow.optionId } });
+    }
     const id = uid();
     this.push({
       kind: "permission", id,
-      title: r.toolCall.title ?? "Run a tool",
+      title: toolLabel(r.toolCall.title ?? "Run a tool"),
       options: r.options.map((o) => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
     });
     return new Promise((resolve) => this.permissionWaiters.set(id, resolve));
   }
 
   private onUpdate(n: SessionNotification) {
+    if (this.replaying) return;
     const u = n.update;
     const appendChunk = (kind: "agent" | "thought", t: string) => {
       const last = this.snap.items[this.snap.items.length - 1];
@@ -242,7 +360,7 @@ export class AgentSession {
         if (u.content.type === "text") appendChunk("thought", u.content.text);
         break;
       case "tool_call":
-        this.push({ kind: "tool", id: uid(), toolCallId: u.toolCallId, title: u.title, status: u.status ?? "pending" });
+        this.push({ kind: "tool", id: uid(), toolCallId: u.toolCallId, title: toolLabel(u.title), status: u.status ?? "pending" });
         break;
       case "config_option_update":
         if (u.configOptions) {
@@ -256,7 +374,7 @@ export class AgentSession {
       case "tool_call_update":
         this.patchItem(
           (i) => i.kind === "tool" && i.toolCallId === u.toolCallId,
-          (i) => ({ ...i, title: u.title ?? (i as { title: string }).title, status: u.status ?? (i as { status: string }).status }) as ChatItem,
+          (i) => ({ ...i, title: u.title ? toolLabel(u.title) : (i as { title: string }).title, status: u.status ?? (i as { status: string }).status }) as ChatItem,
         );
         break;
       default:
@@ -264,13 +382,14 @@ export class AgentSession {
     }
   }
 
-  private harvestFindings(from: number) {
-    const b = reviewBridge.get();
-    if (!b) return;
+  private async harvestFindings(from: number) {
+    const b = reviewBridge.get(this.stackId);
+    const pr = this.snap.layer?.pr;
+    if (!b || pr == null) return;
     const text = this.snap.items.slice(from).filter((i) => i.kind === "agent").map((i) => (i as { text: string }).text).join("\n");
     const found = parseFindingBlocks(text);
     let added = 0;
-    for (const f of found) if (b.addFinding(f, this.agentName).ok) added++;
+    for (const f of found) if ((await b.addFinding(f.pr ?? pr, f, this.agentName)).ok) added++;
     if (found.length) this.notice(`Placed ${added} of ${found.length} findings beside the diff.`);
   }
 }
@@ -281,13 +400,16 @@ const FALLBACK_FORMAT = `This client cannot give you review tools, so report eac
 \`\`\`
 Use new-side line numbers that appear in the diff.`;
 
-const sessions = new Map<string, AgentSession>();
+// Kept on globalThis so a dev-mode hot reload of this module doesn't drop live conversations
+// (and orphan their agent processes).
+const g = globalThis as typeof globalThis & { __stackReviewerAgentSessions?: Map<string, AgentSession> };
+const sessions = (g.__stackReviewerAgentSessions ??= new Map<string, AgentSession>());
 
 export function getAgentSession(stackId: string, agentId: string, agentName: string): AgentSession {
   const key = `${stackId}|${agentId}`;
   let s = sessions.get(key);
   if (!s) {
-    s = new AgentSession(agentId, agentName);
+    s = new AgentSession(agentId, agentName, stackId);
     sessions.set(key, s);
   }
   return s;
@@ -299,11 +421,16 @@ export function useAgentSnapshot(s: AgentSession | null): Snapshot {
     () => (s ? s.getSnapshot() : EMPTY),
   );
 }
-const EMPTY: Snapshot = { status: "idle", items: [], worktree: null, settings: [] };
+const EMPTY: Snapshot = { status: "idle", items: [], worktree: null, settings: [], layer: null };
+
+export function checkFailurePrompt(number: number, checkNames: string[] = []): string {
+  const which = checkNames.length ? ` (${checkNames.join(", ")})` : "";
+  return `Checks are failing on #${number}${which}. Call get_check_failures, find the root cause (it may be in a lower layer of the stack) and explain it briefly. Add a finding if it is in this layer's changes.`;
+}
 
 export function reviewLayerPrompt(layerIndex: number, total: number, number: number): string {
-  return `You are helping me review layer ${layerIndex} of ${total} (PR #${number}) of a stacked pull request.
-The working directory is a checkout of this layer's head commit.
+  return `Review layer ${layerIndex} of ${total} (PR #${number}) of this stacked pull request with me.
+The working directory is a checkout of this layer's head commit. We may move through other layers of the stack in this same conversation; anything you learned about lower layers still applies.
 
 1. Call get_review_context to see the stack, this layer's description, its base and head commits and changed files.
 2. Read the diff with \`git diff <base>...HEAD\` and read surrounding code as needed. Earlier layers are already in the base; later layers are not here yet.

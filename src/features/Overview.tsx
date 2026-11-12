@@ -12,13 +12,13 @@ import { useSession } from "../app/session";
 import { CHECK_STYLE, ChecksLabel, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing, Spinner, timeAgo } from "../ui/bits";
 
 export function Overview({ repo, stackKey }: { repo: RepoRef; stackKey: string }) {
-  const { go, back, canGoBack } = useNav();
+  const { up } = useNav();
   const stack = useStack(repo, stackKey);
 
   return (
     <div className="app">
       <header className="topbar">
-        <button className="btn" onClick={() => (canGoBack ? back() : go({ name: "home" }))}><ChevronLeft /> Inbox</button>
+        <button className="btn" onClick={() => up({ name: "home" })}><ChevronLeft /> Inbox</button>
         <nav aria-label="Breadcrumb" className="crumbs"><span>{repoKey(repo)}</span><span aria-hidden="true">›</span><span className="here">{stack.data?.title ?? "Stack"}</span></nav>
         <div className="spacer" />
         {stack.isFetching && <span className="spinner" aria-label="Refreshing" />}

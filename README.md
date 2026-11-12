@@ -34,6 +34,8 @@ Tokens are stored in the OS keychain (`stack-reviewer` / `github`).
 | ACP client (JSON-RPC over stdio) | `src/agent/acp.ts`, `src/agent/session.ts` |
 | MCP tools the agent gets: `get_review_context`, `get_check_failures`, `add_finding`, `set_layer_brief`, `set_review_summary` | `src/agent/mcpServer.ts` (served on loopback by `src-tauri/src/mcp.rs`) |
 
+The agent chat is one conversation per stack. The agent works in a single checkout per stack that follows you between layers. A divider marks each move, and the agent is told it has moved, so it keeps what it learned lower down. Its tools default to the layer it is working on, which may not be the one on screen. Transcripts are saved locally, and the agent's session is resumed after a restart.
+
 Agents never write to GitHub. `add_finding` only accepts lines that appear in the diff. Each finding goes into the margin, where you choose **Draft** or **Dismiss**.
 
 ## Keyboard (Review screen)
@@ -48,5 +50,6 @@ cd src-tauri && GH_TOKEN=$(gh auth token) cargo test -- --include-ignored   # wo
 GH_TOKEN=$(gh auth token) bun scripts/smoke.ts <org> <owner/repo>           # read-only GitHub API smoke test
 bun scripts/acp-probe.ts claude|gemini                                      # agent starts and reports capabilities
 bun scripts/agent-settings-probe.ts claude|gemini                           # model/effort/mode switching over ACP (no prompt)
-bun scripts/agent-e2e.ts                                                    # Claude Code calls the review tools (one short prompt)
+bun scripts/agent-e2e.ts                                                    # Claude Code uses the review tools across two layers (two short prompts)
+bun scripts/agent-resume-probe.ts claude|gemini                             # conversation survives a restart via session/load (two tiny prompts)
 ```

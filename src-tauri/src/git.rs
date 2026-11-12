@@ -56,9 +56,10 @@ pub async fn worktree_prepare(
     number: u32,
     head_sha: String,
     base_ref: String,
+    slot: Option<String>,
 ) -> Result<Worktree, String> {
     let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    prepare(&data, &token, &owner, &repo, number, &head_sha, &base_ref).await
+    prepare(&data, &token, &owner, &repo, number, &head_sha, &base_ref, slot.as_deref()).await
 }
 
 pub async fn prepare(
@@ -69,7 +70,15 @@ pub async fn prepare(
     number: u32,
     head_sha: &str,
     base_ref: &str,
+    slot: Option<&str>,
 ) -> Result<Worktree, String> {
+    // A named slot (e.g. one per stack) is a single worktree that moves between layers;
+    // without one, each layer head gets its own worktree.
+    if let Some(s) = slot {
+        if s.is_empty() || s.len() > 64 || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+            return Err("invalid worktree slot".into());
+        }
+    }
     let (owner, repo) = (safe(owner)?.to_string(), safe(repo)?.to_string());
     let (token, head_sha, base_ref) = (token.to_string(), head_sha.to_string(), base_ref.to_string());
     if !is_sha(&head_sha) {
@@ -89,11 +98,19 @@ pub async fn prepare(
     let base_spec = format!("+refs/heads/{base_ref}:refs/sr/base/{number}");
     git(&clone, &token, &["fetch", "--quiet", "--filter=blob:none", "origin", &pr_ref, &base_spec]).await?;
 
-    let wt = root.join("worktrees").join(format!("{number}-{}", &head_sha[..12.min(head_sha.len())]));
+    let name = match slot {
+        Some(s) => format!("slot-{s}"),
+        None => format!("{number}-{}", &head_sha[..12.min(head_sha.len())]),
+    };
+    let wt = root.join("worktrees").join(name);
     if !wt.exists() {
         std::fs::create_dir_all(wt.parent().unwrap()).map_err(|e| e.to_string())?;
         let wt_str = wt.to_string_lossy().to_string();
         git(&clone, &token, &["worktree", "add", "--detach", "--quiet", &wt_str, &head_sha]).await?;
+    } else if slot.is_some() {
+        // Move the shared worktree to this layer. It is app-managed and agents may not edit it,
+        // so discarding local changes is safe.
+        git(&wt, &token, &["checkout", "--detach", "--force", "--quiet", &head_sha]).await?;
     }
     let base_sha = git(&clone, &token, &["rev-parse", &format!("refs/sr/base/{number}")]).await?.trim().to_string();
     Ok(Worktree { path: wt.to_string_lossy().to_string(), head: head_sha, base: base_sha })
@@ -113,20 +130,29 @@ mod tests {
             .await
             .unwrap();
         let head_sha = head.split_whitespace().next().unwrap_or(sha).to_string();
-        let wt = super::prepare(&dir, &token, "octocat", "Hello-World", 1, &head_sha, "master").await.unwrap();
+        let wt = super::prepare(&dir, &token, "octocat", "Hello-World", 1, &head_sha, "master", None).await.unwrap();
         assert!(std::path::Path::new(&wt.path).join("README").exists());
         assert_eq!(wt.base.len(), 40);
         // Second call reuses the clone and worktree.
-        let again = super::prepare(&dir, &token, "octocat", "Hello-World", 1, &head_sha, "master").await.unwrap();
+        let again = super::prepare(&dir, &token, "octocat", "Hello-World", 1, &head_sha, "master", None).await.unwrap();
         assert_eq!(again.path, wt.path);
+        // A slot worktree is created once and then moved between commits.
+        let base = wt.base.clone();
+        let slot = super::prepare(&dir, &token, "octocat", "Hello-World", 1, &head_sha, "master", Some("stack-1")).await.unwrap();
+        assert!(slot.path.ends_with("slot-stack-1"));
+        let moved = super::prepare(&dir, &token, "octocat", "Hello-World", 1, &base, "master", Some("stack-1")).await.unwrap();
+        assert_eq!(moved.path, slot.path);
+        let at = super::git(std::path::Path::new(&moved.path), &token, &["rev-parse", "HEAD"]).await.unwrap();
+        assert_eq!(at.trim(), base);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
     async fn rejects_path_tricks() {
         let dir = std::env::temp_dir();
-        assert!(super::prepare(&dir, "t", "..", "x", 1, "abcdef1", "main").await.is_err());
-        assert!(super::prepare(&dir, "t", "o", "r", 1, "not-a-sha", "main").await.is_err());
-        assert!(super::prepare(&dir, "t", "o", "r", 1, "abcdef1", "--upload-pack=x").await.is_err());
+        assert!(super::prepare(&dir, "t", "..", "x", 1, "abcdef1", "main", None).await.is_err());
+        assert!(super::prepare(&dir, "t", "o", "r", 1, "not-a-sha", "main", None).await.is_err());
+        assert!(super::prepare(&dir, "t", "o", "r", 1, "abcdef1", "--upload-pack=x", None).await.is_err());
+        assert!(super::prepare(&dir, "t", "o", "r", 1, "abcdef1", "main", Some("../x")).await.is_err());
     }
 }

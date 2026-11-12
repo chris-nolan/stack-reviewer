@@ -4,10 +4,13 @@ import type { Layer, RepoRef, Stack } from "../lib/model";
 import { repoKey } from "../lib/model";
 import { invoke, isTauri, local } from "../lib/platform";
 import { AgentDot } from "../ui/bits";
+import { Markdown } from "../ui/Markdown";
 import { homeDir } from "@tauri-apps/api/path";
-import { getAgentSession, reviewLayerPrompt, useAgentSnapshot, type AgentSession, type ChatItem } from "./session";
+import { checkFailurePrompt, getAgentSession, reviewLayerPrompt, useAgentSnapshot, type AgentSession, type ChatItem } from "./session";
 import type { AgentSetting } from "./settings";
 import { useAgents } from "./useAgents";
+
+export type AgentRequest = { id: number; text: string; display: string };
 
 type Props = {
   stack: Stack;
@@ -17,11 +20,14 @@ type Props = {
   openFindings: number;
   onNextFinding: () => void;
   onClose: () => void;
+  /** A message requested from elsewhere in the review screen; sent once the agent is free. */
+  request?: AgentRequest | null;
+  onRequestHandled?: (id: number) => void;
 };
 
 type Worktree = { path: string; head: string; base: string };
 
-export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNextFinding, onClose }: Props) {
+export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNextFinding, onClose, request, onRequestHandled }: Props) {
   const source = useSource();
   const agents = useAgents();
   const available = agents.data?.filter((a) => a.available) ?? [];
@@ -42,17 +48,29 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
   }, [session]);
   useEffect(() => endRef.current?.scrollIntoView({ block: "end" }), [snap.items.length, snap.items.at(-1)]);
 
+  // One checkout per stack (and agent) that moves to whichever layer the conversation is on.
+  const slot = `${stack.key}-${agent?.id ?? "agent"}`.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64);
+  const agentLayer = snap.layer;
+  const elsewhere = !!agentLayer && (agentLayer.pr !== layer.pr.number || agentLayer.headSha !== layer.pr.headSha);
+
   const ensureRunning = async () => {
     if (!session) throw new Error("No agent available");
     const token = source.gitToken();
     if (!token) throw new Error("Agents need a real GitHub sign-in (demo data has no code to read).");
-    setPreparing("Checking out this layer…");
+    const here = session.getSnapshot().layer;
+    const needCheckout = !session.running || !here || here.headSha !== layer.pr.headSha;
     try {
-      const wt = await invoke<Worktree>("worktree_prepare", {
-        token, owner: repo.owner, repo: repo.repo, number: layer.pr.number, headSha: layer.pr.headSha, baseRef: layer.pr.baseRef,
-      });
-      setPreparing(`Starting ${session.agentName}…`);
-      await session.start(wt.path);
+      if (needCheckout) {
+        setPreparing(session.running ? `Moving the checkout to layer ${layer.index}…` : "Checking out this layer…");
+        const wt = await invoke<Worktree>("worktree_prepare", {
+          token, owner: repo.owner, repo: repo.repo, number: layer.pr.number, headSha: layer.pr.headSha, baseRef: layer.pr.baseRef, slot,
+        });
+        if (!session.running) {
+          setPreparing(`Starting ${session.agentName}…`);
+          await session.start(wt.path);
+        }
+      }
+      session.moveTo({ index: layer.index, total: stack.layers.length, pr: layer.pr.number, title: layer.pr.title, headSha: layer.pr.headSha, baseSha: layer.pr.baseSha });
     } finally {
       setPreparing(null);
     }
@@ -69,9 +87,20 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
   };
 
   const busy = snap.status === "busy" || snap.status === "starting" || !!preparing;
+
+  // Requests from the rest of the screen (e.g. "Ask the agent why" on a failing check). If the
+  // agent is busy, wait until it is free rather than dropping the request.
+  const handled = useRef<number | null>(null);
+  useEffect(() => {
+    if (!request || handled.current === request.id || busy || !session || !agent) return;
+    handled.current = request.id;
+    onRequestHandled?.(request.id);
+    void send(request.text, request.display);
+  }, [request, busy, session, agent]);
+  const queued = !!request && handled.current !== request.id;
   const quick = [
     { label: `Review layer ${layer.index}`, run: () => send(reviewLayerPrompt(layer.index, stack.layers.length, layer.pr.number), `Review layer ${layer.index} (#${layer.pr.number})`) },
-    ...(layer.pr.checks === "fail" ? [{ label: "Why are checks failing?", run: () => send(`Checks are failing on #${layer.pr.number}. Call get_check_failures, find the root cause (it may be in a lower layer of the stack) and explain it briefly. Add a finding if it is in this layer's changes.`, "Why are checks failing?") }] : []),
+    ...(layer.pr.checks === "fail" ? [{ label: "Why are checks failing?", run: () => send(checkFailurePrompt(layer.pr.number), "Why are checks failing?") }] : []),
     ...(currentFile ? [{ label: "Explain this file", run: () => send(`Explain the changes to ${currentFile} in #${layer.pr.number}: what they do and what a reviewer should check. Don't add findings unless something is wrong.`, `Explain ${currentFile.split("/").pop()}`) }] : []),
     { label: "Draft review summary", run: () => send(`Draft a short review summary for #${layer.pr.number} based on our discussion and the findings so far, and save it with set_review_summary. Keep it under 80 words.`, "Draft review summary") },
   ];
@@ -107,21 +136,34 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
         </>
       }
     >
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
-        {["#" + layer.pr.number + " diff", "whole stack", "checks + logs", "worktree"].map((c) => <span key={c} className="pill" style={{ fontSize: 11, background: "#1a1f26", color: "var(--text-2)" }}>{c}</span>)}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "8px 12px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+        <span className="pill" style={{ fontSize: 11, background: "#1a1f26", color: "var(--text-2)" }} title="One conversation for the whole stack">whole stack</span>
+        <span className="pill" style={{ fontSize: 11, background: "#1a1f26", color: "var(--text-2)" }}>checks + logs</span>
         <span className="pill" style={{ fontSize: 11, background: "#2a1f12", color: "var(--agent)" }}>drafts only</span>
+        <span className="spacer" />
+        {snap.items.length > 0 && <button className="btn btn-sm" disabled={busy} onClick={() => void session?.reset()} title="Forget this conversation and start a new one">New chat</button>}
       </div>
+      {agentLayer && (
+        <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--border)", fontSize: 12, background: elsewhere ? "var(--warn-bg)" : undefined, color: elsewhere ? "var(--warn-fg)" : "var(--muted)" }}>
+          {elsewhere
+            ? snap.status === "busy"
+              ? `Still working on layer ${agentLayer.index} (#${agentLayer.pr}). Its findings go to that layer.`
+              : `On layer ${agentLayer.index} (#${agentLayer.pr}). Your next message moves it to layer ${layer.index}.`
+            : `Working on layer ${agentLayer.index} of ${agentLayer.total} · #${agentLayer.pr}`}
+        </div>
+      )}
       <AgentSettingsRow session={session} settings={snap.settings} disabled={snap.status === "busy" || snap.status === "starting"} />
 
       <div className="scroll" style={{ flex: "1 1 auto", padding: 12, display: "flex", flexDirection: "column", gap: 12, lineHeight: 1.5 }} aria-live="polite">
         {snap.items.length === 0 && (
           <p className="muted" style={{ margin: 0 }}>
-            {agent?.name} works in a local checkout of #{layer.pr.number}. It can read code and, with your permission, run commands. Its findings appear beside the diff as drafts. Nothing is posted until you submit your review.
+            One conversation for the whole stack. {agent?.name} works in a local checkout that follows you from layer to layer, and remembers what it learned lower down. It can read code and, with your permission, run commands. Its findings appear beside the diff as drafts. Nothing is posted until you submit your review.
           </p>
         )}
         {snap.items.map((i) => <Item key={i.id} item={i} onAnswer={(opt) => session?.answerPermission(i.id, opt)} />)}
         {preparing && <span className="muted" style={{ display: "flex", gap: 8, alignItems: "center" }}><span className="spinner" aria-hidden="true" />{preparing}</span>}
         {snap.status === "busy" && <span className="muted" style={{ display: "flex", gap: 8, alignItems: "center" }}><span className="spinner" aria-hidden="true" />Working…</span>}
+        {queued && busy && <span className="muted" style={{ fontSize: 12 }}>Queued: “{request!.display}” will be sent when {agent?.name} finishes.</span>}
         {openFindings > 0 && (
           <button className="btn btn-agent" style={{ alignSelf: "flex-start" }} onClick={onNextFinding}>Go to next finding · {openFindings} to triage</button>
         )}
@@ -214,7 +256,7 @@ function Item({ item, onAnswer }: { item: ChatItem; onAnswer: (optionId: string 
     case "user":
       return <div style={{ alignSelf: "flex-end", maxWidth: "88%", padding: "7px 11px", borderRadius: 12, background: "#1f2a3b", whiteSpace: "pre-wrap" }}>{item.text}</div>;
     case "agent":
-      return <div style={{ color: "#dadde2", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.text}</div>;
+      return <div style={{ color: "#dadde2" }}><Markdown text={item.text} /></div>;
     case "thought":
       return (
         <details className="muted" style={{ fontSize: 12 }}>
@@ -237,7 +279,7 @@ function Item({ item, onAnswer }: { item: ChatItem; onAnswer: (optionId: string 
           ) : (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {item.options.map((o) => (
-                <button key={o.optionId} className={o.kind === "allow_once" ? "btn btn-sm btn-soft" : "btn btn-sm"} onClick={() => onAnswer(o.optionId)}>{o.name}</button>
+                <button key={o.optionId} className={o.kind === "allow_once" ? "btn btn-sm btn-soft" : "btn btn-sm"} style={{ whiteSpace: "normal", textAlign: "left", maxWidth: "100%", lineHeight: 1.35 }} onClick={() => onAnswer(o.optionId)}>{o.name}</button>
               ))}
             </div>
           )}
@@ -245,5 +287,13 @@ function Item({ item, onAnswer }: { item: ChatItem; onAnswer: (optionId: string 
       );
     case "notice":
       return <div style={{ fontSize: 12, color: item.tone === "error" ? "var(--bad-fg)" : "var(--muted)" }}>{item.text}</div>;
+    case "divider":
+      return (
+        <div role="separator" aria-label={item.text} style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--accent-soft-fg)", fontSize: 12, margin: "4px 0" }}>
+          <span style={{ flex: "1 1 auto", height: 1, background: "var(--accent-soft-bd)" }} />
+          <span style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.text}</span>
+          <span style={{ flex: "1 1 auto", height: 1, background: "var(--accent-soft-bd)" }} />
+        </div>
+      );
   }
 }

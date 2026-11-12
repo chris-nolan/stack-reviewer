@@ -16,6 +16,7 @@ export type Snapshot = {
   threads: Record<string, ReviewThread[]>;
   checks: Record<string, CheckRun[]>;
   logs: Record<string, string>;
+  texts?: Record<string, string | null>;
 };
 
 const missing = (what: string) => Promise.reject(new Error(`Not in the snapshot: ${what}. Re-run scripts/snapshot.ts to capture it.`));
@@ -58,6 +59,7 @@ export class SnapshotSource implements DataSource {
     return f ? Promise.resolve(f) : missing(`files of #${pr.number}`);
   }
   compare() { return Promise.resolve([]); }
+  fileText(r: RepoRef, ref: string, path: string) { return Promise.resolve(this.s.texts?.[`${repoKey(r)}@${ref}:${path}`] ?? null); }
   gitToken() { return null; }
   threads(r: RepoRef, n: number) { return Promise.resolve(this.s.threads[`${repoKey(r)}#${n}`] ?? []); }
   checks(r: RepoRef, sha: string) { return Promise.resolve(this.s.checks[`${repoKey(r)}@${sha}`] ?? []); }

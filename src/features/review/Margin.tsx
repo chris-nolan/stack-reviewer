@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { DraftComment, Finding, ReviewThread } from "../../lib/model";
 import { SEVERITY_STYLE, timeAgo } from "../../ui/bits";
+import { Markdown } from "../../ui/Markdown";
 
 type Props = {
   findings: Finding[];
@@ -62,7 +63,7 @@ function FindingCard({ f, focused, onFocus, onFinding }: Props & { f: Finding; f
         <span className="muted" style={{ fontSize: 12 }}>{f.agent}</span>
       </LineButton>
       <strong style={{ fontWeight: 600, lineHeight: 1.35 }}>{f.title}</strong>
-      <p className="prose" style={{ margin: 0, fontSize: 12.5, whiteSpace: "pre-wrap" }}>{f.body}</p>
+      <Markdown text={f.body} compact />
       {f.suggestion && <div className="mono" style={{ fontSize: 11.5, padding: "6px 8px", borderRadius: 6, background: "var(--add-bg)", color: "var(--add-fg)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>+ {f.suggestion}</div>}
       {f.status === "open" ? (
         <div style={{ display: "flex", gap: 6 }}>
@@ -95,7 +96,7 @@ function ThreadCard({ t, onFocus, onReply, onResolve }: Props & { t: ReviewThrea
       {t.comments.map((c) => (
         <div key={c.id}>
           <strong>{c.author}</strong> <span className="muted" style={{ fontSize: 12 }}>{timeAgo(c.createdAt)}</span>
-          <div className="prose" style={{ whiteSpace: "pre-wrap", fontSize: 12.5 }}>{c.body}</div>
+          <Markdown text={c.body} compact />
         </div>
       ))}
       {open && (
@@ -124,7 +125,7 @@ function DraftCard({ d, onFocus, onEditDraft, onRemoveDraft }: Props & { d: Draf
       {editing ? (
         <textarea className="input" rows={3} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Edit draft" />
       ) : (
-        <div className="prose" style={{ whiteSpace: "pre-wrap", fontSize: 12.5 }}>{d.body}</div>
+        <Markdown text={d.body} compact />
       )}
       <div style={{ display: "flex", gap: 6 }}>
         {editing ? (

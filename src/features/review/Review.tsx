@@ -3,15 +3,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { rememberRecent, useNav } from "../../app/nav";
 import { useChecks, useFiles, useSetViewed, useStack, useThreads } from "../../app/queries";
 import { useSession, useSource } from "../../app/session";
-import { AgentDock } from "../../agent/AgentDock";
-import { reviewBridge, type FindingInput } from "../../agent/bridge";
+import { AgentDock, type AgentRequest } from "../../agent/AgentDock";
+import { checkFailurePrompt } from "../../agent/session";
+import { registerStackBridge } from "./stackBridge";
 import { changeStarts, commentableLines, parsePatch } from "../../lib/diff";
-import { failureExcerpt } from "../../lib/logs";
 import { plainText, splitConventional, stripStackBoilerplate, summarize } from "../../lib/markdown";
-import type { CheckRun, FileChange, Layer, RepoRef, ReviewEvent, Stack } from "../../lib/model";
+import type { FileChange, Layer, RepoRef, ReviewEvent, Stack } from "../../lib/model";
 import { repoKey } from "../../lib/model";
 import { local } from "../../lib/platform";
 import { prKey, reviewStore, useReviewState } from "../../lib/reviewStore";
+import { Markdown } from "../../ui/Markdown";
 import { checkRunState, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing, Spinner } from "../../ui/bits";
 import { ChecksDialog, FinishDialog } from "./Dialogs";
 import { DiffView } from "./DiffView";
@@ -21,12 +22,12 @@ type Props = { repo: RepoRef; stackKey: string; layer: number; file?: string; li
 
 export function Review(p: Props) {
   const stack = useStack(p.repo, p.stackKey);
-  const { go } = useNav();
+  const { up } = useNav();
   if (stack.isPending) return <div className="empty"><Spinner label="Loading stack…" /></div>;
   if (stack.error) return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
       <ErrorBox error={stack.error} />
-      <button className="btn" onClick={() => go({ name: "home" })}>Back to inbox</button>
+      <button className="btn" onClick={() => up({ name: "home" })}>Back to inbox</button>
     </div>
   );
   const idx = Math.min(Math.max(1, p.layer), stack.data.layers.length);
@@ -57,7 +58,7 @@ function readingOrder(files: FileChange[], preferred?: string[]): FileChange[] {
 function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }: Omit<Props, "layer"> & { stack: Stack; layer: Layer }) {
   const source = useSource();
   const { viewer } = useSession();
-  const { go } = useNav();
+  const { go, up } = useNav();
   const qc = useQueryClient();
   const key = prKey(repo, layer.pr.number);
   const review = useReviewState(key);
@@ -76,6 +77,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const [briefOpen, setBriefOpen] = useState(() => local.get("briefOpen", true));
   const [finishOpen, setFinishOpen] = useState(false);
   const [checksOpen, setChecksOpen] = useState<number | null | false>(false);
+  const [agentRequest, setAgentRequest] = useState<AgentRequest | null>(null);
   const [path, setPath] = useState<string | null>(initialFile ?? null);
   const [focusLine, setFocusLine] = useState<number | null>(initialLine ?? null);
   const [composerLine, setComposerLine] = useState<number | null>(null);
@@ -140,76 +142,13 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     if (f) selectFile(f.path, f.line);
   };
 
-  // Expose this review to agent tools.
-  const live = useRef({ stack, layer, layerFiles, threads: threadsQ.data ?? [], checks: checksQ.data ?? [], findings: review.findings });
-  live.current = { stack, layer, layerFiles, threads: threadsQ.data ?? [], checks: checksQ.data ?? [], findings: review.findings };
+  // Agent tools for this stack. Registered per stack and kept after leaving the screen, so an
+  // agent still working (perhaps on another layer) writes to the right place.
+  const stackRef = useRef(stack);
+  stackRef.current = stack;
   useEffect(() => {
-    reviewBridge.set({
-      context: () => {
-        const { stack, layer, layerFiles, threads, checks, findings } = live.current;
-        return {
-          repository: repoKey(stack.repo),
-          stack: {
-            title: stack.title, kind: stack.source, base_branch: stack.baseRef,
-            layers: stack.layers.map((l) => ({ index: l.index, pr: l.pr.number, title: l.pr.title, author: l.pr.author, state: l.pr.state, head_branch: l.pr.headRef, base_branch: l.pr.baseRef, checks: l.pr.checks })),
-          },
-          layer_under_review: {
-            index: layer.index, pr: layer.pr.number, title: layer.pr.title, author: layer.pr.author, url: layer.pr.url,
-            description: layer.pr.body.slice(0, 4000), base_sha: layer.pr.baseSha, head_sha: layer.pr.headSha,
-            diff_command: layer.pr.baseSha ? `git diff ${layer.pr.baseSha}...HEAD` : `git diff refs/sr/base/${layer.pr.number}...HEAD`,
-            files: layerFiles.map((f) => ({ path: f.path, status: f.status, additions: f.additions, deletions: f.deletions })),
-          },
-          open_review_threads: threads.filter((t) => !t.isResolved).map((t) => ({ path: t.path, line: t.line, comments: t.comments.map((c) => `${c.author}: ${c.body}`) })),
-          checks: checks.map((c) => ({ name: c.name, state: checkRunState(c) })),
-          findings_already_recorded: findings.filter((f) => f.status !== "dismissed").map((f) => ({ path: f.path, line: f.line, title: f.title })),
-        };
-      },
-      addFinding: (f: FindingInput, agent: string) => {
-        const { stack, layer, layerFiles } = live.current;
-        const target = f.pr ? stack.layers.find((l) => l.pr.number === f.pr) : layer;
-        if (!target) return { ok: false, error: `PR #${f.pr} is not part of this stack.` };
-        const severity = (["High", "Medium", "Low"] as const).includes(f.severity) ? f.severity : "Medium";
-        if (target === layer) {
-          const file = layerFiles.find((x) => x.path === f.path);
-          if (!file) return { ok: false, error: `${f.path} is not changed in #${layer.pr.number}. Changed files: ${layerFiles.map((x) => x.path).join(", ")}` };
-          const lines = commentableLines(parsePatch(file.patch));
-          if (!lines.has(Number(f.line))) {
-            const ranges = [...lines].sort((a, b) => a - b).reduce<string[]>((acc, n, i, arr) => {
-              if (i === 0 || n !== arr[i - 1] + 1) acc.push(String(n));
-              else acc[acc.length - 1] = `${acc[acc.length - 1].split("-")[0]}-${n}`;
-              return acc;
-            }, []);
-            return { ok: false, error: `Line ${f.line} of ${f.path} is not in the diff. Use one of: ${ranges.join(", ") || "(no commentable lines)"}` };
-          }
-        }
-        const created = reviewStore.addFinding(prKey(stack.repo, target.pr.number), {
-          pr: target.pr.number, path: f.path, line: Number(f.line), severity, title: String(f.title).slice(0, 140), body: String(f.body ?? ""),
-          suggestion: f.suggestion || undefined, agent,
-        });
-        return { ok: true, id: created.id.slice(0, 8) };
-      },
-      setBrief: (summary, order) => reviewStore.setBrief(key, { summary, readingOrder: order, agent: "agent" }),
-      setSummary: (text) => reviewStore.setSummary(key, text),
-      checkFailures: async (pr) => {
-        const { stack, layer } = live.current;
-        const target = pr ? stack.layers.find((l) => l.pr.number === pr) ?? layer : layer;
-        const checks: CheckRun[] = await source.checks(stack.repo, target.pr.headSha);
-        const failing = checks.filter((c) => checkRunState(c) === "fail");
-        if (!failing.length) return `No failing checks on #${target.pr.number}.`;
-        const parts = await Promise.all(failing.slice(0, 4).map(async (c) => {
-          if (!c.isActions) return `## ${c.name}\n(not a GitHub Actions job; no log available)`;
-          try {
-            const ex = failureExcerpt(await source.jobLog(stack.repo, c.id), 80);
-            return `## ${c.name}\n${ex.lines.join("\n")}`;
-          } catch (e) {
-            return `## ${c.name}\n(log unavailable: ${e instanceof Error ? e.message : e})`;
-          }
-        }));
-        return `Failing checks on #${target.pr.number}:\n\n${parts.join("\n\n")}`;
-      },
-    });
-    return () => reviewBridge.set(null);
-  }, [key, source]);
+    registerStackBridge(`${repoKey(repo)}#${stack.key}`, source, qc, () => stackRef.current);
+  }, [repo, stack.key, source, qc]);
 
   // Keyboard shortcuts.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -254,12 +193,14 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     await qc.invalidateQueries({ queryKey: ["inbox"] });
     setFinishOpen(false);
     if (next) goLayer(next);
-    else go({ name: "overview", repo, stackKey: stack.key });
+    else up({ name: "overview", repo, stackKey: stack.key });
   };
 
   const summaryText = review.brief?.summary ?? summarize(layer.pr.body, 600);
   const fullBody = useMemo(() => plainText(stripStackBoilerplate(layer.pr.body)).replace(/\n{3,}/g, "\n\n").trim(), [layer.pr.body]);
   const [showBody, setShowBody] = useState(false);
+  // Full description as Markdown, minus the "Part N of M in stack…" line stacking tools add.
+  const fullBodyMd = useMemo(() => layer.pr.body.replace(/^[ \t]*part \d+ of \d+\b.*$/im, "").trim(), [layer.pr.body]);
   const manyLayers = stack.layers.length > 8;
   const railLayersRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -270,7 +211,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   return (
     <div className="app">
       <header className="topbar">
-        <button className="btn" onClick={() => go({ name: "overview", repo, stackKey: stack.key })}><ChevronLeft /> Overview</button>
+        <button className="btn" onClick={() => up({ name: "overview", repo, stackKey: stack.key })}><ChevronLeft /> Overview</button>
         <nav aria-label="Breadcrumb" className="crumbs"><span>{repo.repo}</span><span aria-hidden="true">›</span><span>{stack.title}</span><span aria-hidden="true">›</span><span className="here">#{layer.pr.number}</span></nav>
         <div className="spacer" />
         <button className="btn btn-soft" onClick={() => setFinishOpen(true)}>Pending review · {review.drafts.length} {review.drafts.length === 1 ? "draft" : "drafts"}</button>
@@ -295,6 +236,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                 return (
                   <button
                     key={l.pr.number}
+                    className="rail-layer"
                     data-current={sel || undefined}
                     onClick={() => goLayer(l)}
                     aria-current={sel ? "true" : undefined}
@@ -343,7 +285,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
           <aside aria-label="Stack" style={{ flex: "0 0 52px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "12px 0", borderRight: "1px solid var(--border)", background: "var(--chrome)", overflow: "auto" }}>
             <button className="btn btn-icon" onClick={() => { setRailOpen(true); setRailForced(true); }} aria-label="Expand sidebar">›</button>
             {stack.layers.map((l) => (
-              <button key={l.pr.number} onClick={() => goLayer(l)} aria-label={`Layer ${l.index}: ${l.pr.title}`} style={{ border: 0, background: "transparent", padding: 0 }}>
+              <button key={l.pr.number} className="rail-layer" data-current={l === layer || undefined} onClick={() => goLayer(l)} aria-label={`Layer ${l.index}: ${l.pr.title}`} aria-current={l === layer ? "true" : undefined} style={{ border: 0, background: "transparent", padding: 0 }}>
                 <LayerRing layer={l} size={28} outline={l === layer} />
               </button>
             ))}
@@ -372,7 +314,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
             {briefOpen && (
               <>
                 {showBody ? (
-                  <div className="prose scroll" style={{ maxWidth: 900, maxHeight: 260, whiteSpace: "pre-wrap", padding: "8px 10px", borderRadius: 8, background: "var(--surface-2)" }}>{fullBody}</div>
+                  <div className="scroll" style={{ maxWidth: 900, maxHeight: 260, padding: "8px 12px", borderRadius: 8, background: "var(--surface-2)" }}><Markdown text={fullBodyMd} /></div>
                 ) : summaryText ? (
                   <p className="prose" style={{ margin: 0, maxWidth: 900, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {summaryText}
@@ -397,7 +339,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                     <span style={{ color: "var(--bad)", fontWeight: 600 }}>✕ {failingChecks.map((c) => c.name).join(", ")}</span>
                     <span className="spacer" />
                     <button className="btn btn-sm" onClick={() => setChecksOpen(failingChecks[0].id)}>Log</button>
-                    <button className="btn btn-sm" onClick={() => setDockOpen(true)}>Ask the agent why</button>
+                    <button className="btn btn-sm" onClick={() => { setDockOpen(true); setAgentRequest({ id: Date.now(), text: checkFailurePrompt(layer.pr.number, failingChecks.map((c) => c.name)), display: `Why is ${failingChecks.length === 1 ? failingChecks[0].name : "CI"} failing?` }); }}>Ask the agent why</button>
                     <span style={{ color: "var(--ok)", fontSize: 12 }}>{(checksQ.data ?? []).filter((c) => checkRunState(c) === "pass").length} pass</span>
                   </div>
                 ) : checksQ.data?.length ? (
@@ -440,7 +382,10 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                   <div style={{ flex: "1 1 auto", display: "flex", minHeight: 0 }}>
                     <div style={{ flex: "999 1 460px", minWidth: 0, minHeight: 0 }}>
                       <DiffView
+                        repo={repo}
                         file={current}
+                        newRef={layer.pr.headSha}
+                        oldRef={mode === "since" ? myReview?.commit ?? undefined : layer.pr.baseSha}
                         layout={layout}
                         marks={{ findings: findingsHere, threads: threadsHere, drafts: draftsHere }}
                         focusLine={focusLine}
@@ -486,7 +431,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
         </main>
 
         {dockOpen && (
-          <AgentDock stack={stack} layer={layer} repo={repo} currentFile={current?.path ?? null} openFindings={openFindings.length} onNextFinding={nextFinding} onClose={() => setDockOpen(false)} />
+          <AgentDock stack={stack} layer={layer} repo={repo} currentFile={current?.path ?? null} openFindings={openFindings.length} onNextFinding={nextFinding} onClose={() => setDockOpen(false)} request={agentRequest} onRequestHandled={(id) => setAgentRequest((r) => (r?.id === id ? null : r))} />
         )}
       </div>
 

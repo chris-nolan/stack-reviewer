@@ -168,3 +168,146 @@ describe("readSettings", () => {
     expect(s).toEqual([{ kind: "model", id: "model", via: "models", name: "Model", current: "auto", options: [{ value: "auto", name: "Auto", description: undefined }, { value: "pro", name: "Pro", description: undefined }] }]);
   });
 });
+
+import { isOwnTool, toolLabel } from "../agent/session";
+describe("tool labels", () => {
+  it("recognises and names Stack Reviewer's own tools", () => {
+    expect(isOwnTool("mcp__stack-reviewer__get_review_context")).toBe(true);
+    expect(isOwnTool("Bash")).toBe(false);
+    expect(isOwnTool("mcp__github__create_issue")).toBe(false);
+    expect(toolLabel("mcp__stack-reviewer__add_finding")).toBe("Recorded a finding");
+    expect(toolLabel("mcp__github__create_issue")).toBe("github: create issue");
+    expect(toolLabel("npm test")).toBe("npm test");
+  });
+});
+
+import { AgentSession } from "../agent/session";
+describe("AgentSession layer handoff", () => {
+  const L = (index: number, pr: number, headSha = `sha${pr}`) => ({ index, total: 3, pr, title: `PR ${pr}`, headSha });
+  it("adds a divider only once the conversation has history", () => {
+    const s = new AgentSession("claude", "Claude Code", "acme/api#n1");
+    s.moveTo(L(1, 10));
+    expect(s.getSnapshot().items).toEqual([]);
+    expect(s.getSnapshot().layer?.pr).toBe(10);
+    // simulate an earlier exchange
+    (s as unknown as { push: (i: unknown) => void }).push({ kind: "user", id: "u1", text: "hi" });
+    s.moveTo(L(2, 11));
+    const items = s.getSnapshot().items;
+    expect(items.at(-1)).toMatchObject({ kind: "divider", text: "Layer 2 of 3 · #11 PR 11" });
+    s.moveTo(L(2, 11)); // same layer: nothing new
+    expect(s.getSnapshot().items).toHaveLength(items.length);
+    s.moveTo(L(2, 11, "newsha"));
+    expect(s.getSnapshot().items.at(-1)).toMatchObject({ kind: "divider", text: "Layer 2 of 3 · #11 PR 11 · new commits" });
+  });
+});
+
+import { renderToStaticMarkup } from "react-dom/server";
+import { Markdown } from "../ui/Markdown";
+describe("Markdown", () => {
+  it("renders agent-style markdown and drops raw HTML", () => {
+    const html = renderToStaticMarkup(
+      <Markdown text={"**What it does:** sets `RateLimit:Capacity`.\n\n- one\n- two\n\n1. **Is it right?** Yes.\n\n<script>alert(1)</script>\n\nSee [docs](https://example.com) and <b onclick=\"x()\">raw</b>.\n\n| a | b |\n|---|---|\n| 1 | 2 |"} />,
+    );
+    expect(html).toContain("<strong>What it does:</strong>");
+    expect(html).toContain("<code>RateLimit:Capacity</code>");
+    expect(html).toContain("<li>one</li>");
+    expect(html).toContain("<ol>");
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain("<table>");
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain("onclick");
+  });
+});
+
+import { buildDisplayRows, segments, toSplitRows } from "./diffModel";
+describe("diff display model", () => {
+  const patch = "@@ -3,3 +3,3 @@ fn\n c3\n-const a = 1;\n+const a = 2;\n c5\n@@ -20,2 +20,3 @@\n c20\n+added\n c21";
+  const file = Array.from({ length: 30 }, (_, i) => `c${i + 1}`);
+  it("adds expandable gaps when the full file is known", () => {
+    const rows = buildDisplayRows(parsePatch(patch), file);
+    const gaps = rows.filter((r) => r.kind === "gap");
+    expect(gaps.map((g) => g.kind === "gap" && [g.position, g.newFrom, g.newTo])).toEqual([["top", 1, 2], ["middle", 6, 19], ["bottom", 23, 30]]);
+  });
+  it("expands from either edge and keeps old line numbers aligned", () => {
+    const rows = buildDisplayRows(parsePatch(patch), file, { "middle:6": { fromTop: 2, fromBottom: 1 } });
+    const shown = rows.filter((r) => r.kind === "ctx" && r.expanded);
+    expect(shown.map((r) => r.kind === "ctx" && [r.oldLine, r.newLine, r.text])).toEqual([[6, 6, "c6"], [7, 7, "c7"], [19, 19, "c19"]]);
+    const gap = rows.find((r) => r.kind === "gap" && r.position === "middle");
+    expect(gap).toMatchObject({ newFrom: 8, newTo: 18 });
+  });
+  it("drops the hunk header once its gap is fully open", () => {
+    const rows = buildDisplayRows(parsePatch(patch), file, { "middle:6": { fromTop: 99, fromBottom: 0 } });
+    expect(rows.filter((r) => r.kind === "hunk")).toHaveLength(1);
+  });
+  it("shows non-expandable gaps without the file", () => {
+    const rows = buildDisplayRows(parsePatch(patch), null);
+    expect(rows.filter((r) => r.kind === "gap").map((g) => g.kind === "gap" && g.expandable)).toEqual([false, false]);
+  });
+  it("marks changed words in paired lines", () => {
+    const rows = buildDisplayRows(parsePatch(patch), null);
+    const del = rows.find((r) => r.kind === "del");
+    const add = rows.find((r) => r.kind === "add");
+    expect(del && del.kind === "del" && del.changes).toEqual([[10, 11]]);
+    expect(add && add.kind === "add" && add.changes).toEqual([[10, 11]]);
+  });
+  it("merges syntax colours with change ranges", () => {
+    const segs = segments("const a = 2;", [{ content: "const", color: "#f00" }, { content: " a = 2;", color: "#fff" }], [[10, 11]]);
+    expect(segs).toEqual([
+      { text: "const", color: "#f00", changed: undefined },
+      { text: " a = ", color: "#fff", changed: undefined },
+      { text: "2", color: "#fff", changed: true },
+      { text: ";", color: "#fff", changed: undefined },
+    ]);
+  });
+  it("pairs deletions and additions for split view", () => {
+    const split = toSplitRows(buildDisplayRows(parsePatch(patch), null));
+    const pairs = split.filter((r) => r.kind === "pair");
+    expect(pairs[1]).toMatchObject({ left: { kind: "del" }, right: { kind: "add" } });
+  });
+});
+
+import { languageFor, tokenize } from "./highlight";
+describe("highlight", () => {
+  it("maps paths to languages", () => {
+    expect(languageFor("src/a.ts")).toBe("ts");
+    expect(languageFor("Acme.Limiter/Thing.cs")).toBe("cs");
+    expect(languageFor("Api.csproj")).toBe("xml");
+    expect(languageFor("deploy/Dockerfile")).toBe("docker");
+    expect(languageFor("README")).toBeNull();
+  });
+  it("tokenizes with colours, line by line", async () => {
+    const t = await tokenize("const a = 1;\nreturn a;", "x.ts");
+    expect(t).toHaveLength(2);
+    expect(t![0].map((x) => x.content).join("")).toBe("const a = 1;");
+    expect(new Set(t![0].map((x) => x.color)).size).toBeGreaterThan(1);
+  });
+});
+
+import { pushRoute, upRoute, type Route } from "../app/nav";
+describe("navigation history", () => {
+  const r = { owner: "o", repo: "r" };
+  const home: Route = { name: "home", section: "mine" };
+  const ov: Route = { name: "overview", repo: r, stackKey: "n1" };
+  const rev = (layer: number): Route => ({ name: "review", repo: r, stackKey: "n1", layer });
+  it("Inbox from the overview after a review goes home, not back to the review", () => {
+    let h = [home];
+    h = pushRoute(h, ov);
+    h = pushRoute(h, rev(1));
+    h = upRoute(h, ov); // review's Overview button
+    expect(h).toEqual([home, ov]);
+    h = upRoute(h, { name: "home" }); // overview's Inbox button
+    expect(h).toEqual([home]); // keeps the section you were on
+  });
+  it("switching layers replaces rather than piling up history", () => {
+    let h = pushRoute(pushRoute([home], ov), rev(1));
+    h = pushRoute(h, rev(2));
+    h = pushRoute(h, rev(3));
+    expect(h).toEqual([home, ov, rev(3)]);
+  });
+  it("going up to a screen that isn't in history opens it", () => {
+    const h = upRoute([home, rev(2)], ov); // e.g. opened a review from Recent
+    expect(h).toEqual([home, rev(2), ov]);
+    expect(upRoute(h, { name: "home" })).toEqual([home]);
+    expect(upRoute([rev(1)], { name: "home" })).toEqual([{ name: "home" }]);
+  });
+});

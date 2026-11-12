@@ -317,6 +317,22 @@ export class GitHubSource implements DataSource {
     }));
   }
 
+  async fileText(repo: RepoRef, ref: string, path: string): Promise<string | null> {
+    const enc = path.split("/").map(encodeURIComponent).join("/");
+    try {
+      const res = await this.request(`/repos/${repo.owner}/${repo.repo}/contents/${enc}?ref=${encodeURIComponent(ref)}`, {
+        headers: { Accept: "application/vnd.github.raw+json" },
+        cache: "force-cache", // content at a commit never changes
+      });
+      if (Number(res.headers.get("content-length") ?? 0) > 2_000_000) return null;
+      const text = await res.text();
+      return text.includes("\u0000") ? null : text;
+    } catch (e) {
+      if (e instanceof GitHubError && (e.status === 404 || e.status === 403 || e.status === 422)) return null;
+      throw e;
+    }
+  }
+
   gitToken(): string | null {
     return this.token;
   }

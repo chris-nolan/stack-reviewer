@@ -5,7 +5,7 @@
 use axum::{
     body::Bytes,
     extract::{Path, State as AxState},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::post,
     Router,
@@ -39,10 +39,12 @@ impl Default for Mcp {
 #[derive(Serialize, Clone)]
 struct McpRequestEvent {
     id: u64,
+    /// Which agent session sent this (the `x-sr-session` header the app gives each session).
+    session: String,
     body: String,
 }
 
-async fn handle(AxState(s): AxState<Shared>, Path(secret): Path<String>, body: Bytes) -> Response {
+async fn handle(AxState(s): AxState<Shared>, Path(secret): Path<String>, headers: HeaderMap, body: Bytes) -> Response {
     if secret != s.secret {
         return StatusCode::NOT_FOUND.into_response();
     }
@@ -56,7 +58,8 @@ async fn handle(AxState(s): AxState<Shared>, Path(secret): Path<String>, body: B
     if is_request {
         s.pending.lock().await.insert(id, tx);
     }
-    let _ = s.app.emit("mcp-request", McpRequestEvent { id, body: text });
+    let session = headers.get("x-sr-session").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let _ = s.app.emit("mcp-request", McpRequestEvent { id, session, body: text });
     if !is_request {
         return StatusCode::ACCEPTED.into_response(); // notifications and responses
     }

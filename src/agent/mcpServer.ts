@@ -3,19 +3,19 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { invoke, isTauri } from "../lib/platform";
-import { reviewBridge } from "./bridge";
+import { agentContexts, reviewBridge } from "./bridge";
 
 const TOOLS = [
   {
     name: "get_review_context",
     description:
-      "Returns the stack being reviewed: every layer (PR) in order, the layer under review with its description, base/head commits, changed files, open review threads and check status. Call this first.",
-    inputSchema: { type: "object", properties: {} },
+      "Returns the stack being reviewed: every layer (PR) in order, plus the layer you are currently on (or `pr`) with its description, base/head commits, changed files, open review threads and check status. Call this first, and again after the reviewer moves you to another layer.",
+    inputSchema: { type: "object", properties: { pr: { type: "number", description: "PR number of another layer; defaults to the layer you are currently on" } } },
   },
   {
     name: "get_check_failures",
     description: "Returns failing CI checks for a layer with the relevant excerpt of each failing job's log.",
-    inputSchema: { type: "object", properties: { pr: { type: "number", description: "PR number; defaults to the layer under review" } } },
+    inputSchema: { type: "object", properties: { pr: { type: "number", description: "PR number; defaults to the layer you are currently on" } } },
   },
   {
     name: "add_finding",
@@ -25,7 +25,7 @@ const TOOLS = [
       type: "object",
       required: ["path", "line", "severity", "title", "body"],
       properties: {
-        pr: { type: "number", description: "PR number; defaults to the layer under review" },
+        pr: { type: "number", description: "PR number; defaults to the layer you are currently on" },
         path: { type: "string" },
         line: { type: "number" },
         severity: { type: "string", enum: ["High", "Medium", "Low"] },
@@ -55,33 +55,34 @@ type Rpc = { jsonrpc: "2.0"; id?: number | string; method?: string; params?: Rec
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text", text: t }], isError });
 
-async function callTool(name: string, args: Record<string, unknown>, agent: string) {
-  const b = reviewBridge.get();
-  if (!b) return text("No review is open in Stack Reviewer right now.", true);
+async function callTool(name: string, args: Record<string, unknown>, session: string) {
+  const ctx = agentContexts.get(session);
+  const b = ctx ? reviewBridge.get(ctx.stackId) : null;
+  if (!ctx || !b) return text("This agent session is no longer attached to a review in Stack Reviewer.", true);
+  // Tools default to the layer the agent is working on, which may differ from the one on screen.
+  const pr = typeof args.pr === "number" ? args.pr : ctx.activePr();
+  if (pr == null) return text("No layer is selected for this conversation yet.", true);
   switch (name) {
     case "get_review_context":
-      return text(JSON.stringify(b.context(), null, 2));
+      return text(JSON.stringify(await b.context(pr), null, 2));
     case "get_check_failures":
-      return text(await b.checkFailures(typeof args.pr === "number" ? args.pr : undefined));
+      return text(await b.checkFailures(pr));
     case "add_finding": {
-      const r = b.addFinding(args as never, agent);
-      return r.ok ? text(`Recorded finding ${r.id}. The reviewer will triage it; nothing was posted.`) : text(r.error, true);
+      const r = await b.addFinding(pr, args as never, ctx.agentName);
+      return r.ok ? text(`Recorded finding ${r.id} on #${pr}. The reviewer will triage it; nothing was posted.`) : text(r.error, true);
     }
     case "set_layer_brief":
-      b.setBrief(String(args.summary ?? ""), Array.isArray(args.reading_order) ? args.reading_order.map(String) : []);
-      return text("Brief updated.");
+      b.setBrief(pr, String(args.summary ?? ""), Array.isArray(args.reading_order) ? args.reading_order.map(String) : [], ctx.agentName);
+      return text(`Brief updated for #${pr}.`);
     case "set_review_summary":
-      b.setSummary(String(args.text ?? ""));
-      return text("Summary drafted for the reviewer to edit.");
+      b.setSummary(pr, String(args.text ?? ""));
+      return text(`Summary drafted for #${pr} for the reviewer to edit.`);
     default:
       return text(`Unknown tool ${name}`, true);
   }
 }
 
-let activeAgentName = "Agent";
-export const setActiveAgentName = (n: string) => { activeAgentName = n; };
-
-export async function handle(msg: Rpc): Promise<unknown | null> {
+export async function handle(msg: Rpc, session = ""): Promise<unknown | null> {
   if (msg.id == null || !msg.method) return null;
   const ok = (result: unknown) => ({ jsonrpc: "2.0", id: msg.id, result });
   switch (msg.method) {
@@ -99,7 +100,7 @@ export async function handle(msg: Rpc): Promise<unknown | null> {
     case "tools/call": {
       const p = msg.params ?? {};
       try {
-        return ok(await callTool(String(p.name), (p.arguments as Record<string, unknown>) ?? {}, activeAgentName));
+        return ok(await callTool(String(p.name), (p.arguments as Record<string, unknown>) ?? {}, session));
       } catch (e) {
         return ok(text(e instanceof Error ? e.message : String(e), true));
       }
@@ -115,10 +116,10 @@ let started: Promise<string> | null = null;
 export function startMcpServer(): Promise<string> {
   if (!isTauri()) return Promise.reject(new Error("MCP needs the desktop app"));
   started ??= (async () => {
-    await listen<{ id: number; body: string }>("mcp-request", async (e) => {
+    await listen<{ id: number; session: string; body: string }>("mcp-request", async (e) => {
       let reply: unknown = null;
       try {
-        reply = await handle(JSON.parse(e.payload.body) as Rpc);
+        reply = await handle(JSON.parse(e.payload.body) as Rpc, e.payload.session);
       } catch {
         reply = { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } };
       }

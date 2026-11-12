@@ -25,6 +25,7 @@ const snap: Snapshot = {
   threads: {},
   checks: {},
   logs: {},
+  texts: {},
 };
 const stacks = await gh.repoStacks(repo, { includeSingles: true });
 snap.repoStacks[target] = stacks;
@@ -35,6 +36,11 @@ for (const key of wanted) {
   for (const l of s.layers) {
     const k = `${target}#${l.pr.number}`;
     snap.files[k] = await gh.files(repo, l.pr);
+    for (const f of snap.files[k]) {
+      if (!f.patch) continue;
+      if (f.status !== "removed") snap.texts[`${target}@${l.pr.headSha}:${f.path}`] = await gh.fileText(repo, l.pr.headSha, f.path);
+      if (f.status !== "added" && l.pr.baseSha) snap.texts[`${target}@${l.pr.baseSha}:${f.previousPath ?? f.path}`] = await gh.fileText(repo, l.pr.baseSha, f.previousPath ?? f.path);
+    }
     snap.threads[k] = await gh.threads(repo, l.pr.number);
     const checks = await gh.checks(repo, l.pr.headSha);
     snap.checks[`${target}@${l.pr.headSha}`] = checks;

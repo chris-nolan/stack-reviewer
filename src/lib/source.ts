@@ -33,6 +33,8 @@ export interface DataSource {
   files(repo: RepoRef, pr: PullRequest): Promise<FileChange[]>;
   /** Files changed between two commits (used for "changes since my review"). */
   compare(repo: RepoRef, base: string, head: string): Promise<FileChange[]>;
+  /** Full text of a file at a commit, or null if it doesn't exist there or is binary/too large. */
+  fileText(repo: RepoRef, ref: string, path: string): Promise<string | null>;
   /** Token for git operations in the desktop app; null for demo data. */
   gitToken(): string | null;
   threads(repo: RepoRef, number: number): Promise<ReviewThread[]>;
