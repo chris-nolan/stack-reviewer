@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concept D · Stack matrix</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0F12}
+a{color:#7AB0FF}a:hover{color:#A9CBFF}
+</style>
+</helmet>
+<div style="min-height: 900px; display: flex; flex-direction: column; background: #0D0F12; color: #E7E9EC; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px; padding: 14px 20px; border-bottom: 1px solid #1E232A">
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <span style="color: #A0A8B3; font-size: 12px">acme/orders-api · alex-r</span>
+    <h1 style="margin: 0; font-size: 20px; font-weight: 600">Rate limiting</h1>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; gap: 18px; color: #A0A8B3">
+    <span><strong style="color: #E7E9EC">5</strong> layers</span>
+    <span><strong style="color: #E7E9EC">11</strong> files</span>
+    <span style="font-family: 'JetBrains Mono', monospace"><span style="color: #5BD48F">+540</span> <span style="color: #FF8A80">−24</span></span>
+    <span><strong style="color: #E7E9EC">1</strong> of 5 reviewed</span>
+  </div>
+  <div style="flex: 1 1 auto"></div>
+  <div role="group" aria-label="Diff mode" style="display: flex; border: 1px solid #2A3038; border-radius: 8px; overflow: hidden">
+    <button type="button" style="padding: 6px 12px; border: 0; background: #232A35; color: #E7E9EC; font: inherit">Per layer</button>
+    <button type="button" style="padding: 6px 12px; border: 0; background: transparent; color: #A0A8B3; font: inherit">Cumulative</button>
+  </div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; padding: 16px 20px 0">
+  <section aria-label="Files by layer" style="flex: 999 1 760px; min-width: 0; border-radius: 12px; border: 1px solid #1E232A; background: #13161B; overflow-x: auto">
+    <div style="min-width: 860px">
+      <div style="display: grid; grid-template-columns: minmax(260px, 2.2fr) repeat(5, minmax(0, 1fr)); gap: 6px; padding: 10px 12px; border-bottom: 1px solid #1E232A; align-items: end">
+        <span style="font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #A0A8B3; font-weight: 600">File</span>
+        <sc-for list="{{ cols }}" as="c" hint-placeholder-count="5">
+          <button type="button" onClick="{{ c.pick }}" style="display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid {{ c.bd }}; background: {{ c.bg }}; color: inherit; font: inherit; cursor: pointer">
+            <span style="display: flex; justify-content: space-between; gap: 6px"><span style="font-weight: 600">{{ c.n }} · #{{ c.pr }}</span><span style="color: {{ c.checkColor }}" aria-label="{{ c.checkSr }}">{{ c.checkIcon }}</span></span>
+            <span style="font-size: 12px; color: {{ c.stateColor }}">{{ c.stateLabel }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="11">
+        <div style="display: grid; grid-template-columns: minmax(260px, 2.2fr) repeat(5, minmax(0, 1fr)); gap: 6px; padding: 3px 12px; align-items: center">
+          <span style="display: flex; flex-direction: column; min-width: 0; padding: 4px 0">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: {{ r.fg }}">{{ r.name }}</span>
+            <span style="font-size: 11px; color: #8A939F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ r.dir }} · {{ r.touches }}</span>
+          </span>
+          <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="5">
+            <div style="height: 34px">
+              <sc-if value="{{ c.touched }}" hint-placeholder-val="{{ true }}">
+                <button type="button" onClick="{{ c.pick }}" aria-label="{{ c.sr }}" style="width: 100%; height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 6px; border: 1px solid {{ c.bd }}; background: {{ c.bg }}; color: #E7E9EC; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; cursor: pointer">
+                  <span style="color: #9BE5B8">+{{ c.add }}</span>
+                  <span style="color: #FFB0A8">{{ c.delLabel }}</span>
+                  <span style="flex: 1 1 auto"></span>
+                  <span style="color: #F5C77E">{{ c.findMark }}</span>
+                  <span style="color: #FF8A80">{{ c.ciMark }}</span>
+                  <span style="color: #A9CBFF">{{ c.threadMark }}</span>
+                  <span style="color: #7AB0FF">{{ c.viewedMark }}</span>
+                </button>
+              </sc-if>
+              <sc-if value="{{ c.untouched }}" hint-placeholder-val="{{ false }}">
+                <div aria-hidden="true" style="height: 34px; border-radius: 6px; background: repeating-linear-gradient(90deg, transparent 0 6px, #171A20 6px 7px)"></div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; padding: 10px 12px 12px; color: #A0A8B3; font-size: 12px; border-top: 1px solid #1E232A; margin-top: 6px">
+        <span><span style="color: #F5C77E">●</span> agent findings</span>
+        <span><span style="color: #FF8A80">▲</span> CI root cause</span>
+        <span><span style="color: #A9CBFF">◆</span> open thread</span>
+        <span><span style="color: #7AB0FF">✓</span> viewed</span>
+        <span>Darker cell = bigger change</span>
+      </div>
+    </div>
+  </section>
+
+  <aside style="flex: 1 1 300px; max-width: 380px; display: flex; flex-direction: column; gap: 12px">
+    <div style="padding: 14px; border-radius: 12px; border: 1px solid #1E232A; background: #13161B; display: flex; flex-direction: column; gap: 8px; line-height: 1.5">
+      <span style="font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #A0A8B3; font-weight: 600">What the shape tells you</span>
+      <p style="margin: 0; color: #C9CED6"><code>rateLimit.ts</code> changes in layers 2, 3 and 4. Review those three diffs back to back, or switch to Cumulative for that file.</p>
+      <p style="margin: 0; color: #C9CED6">#415 rewrites 10 lines of the config schema that #413 adds. Your #413 comments on the schema may already be outdated.</p>
+    </div>
+    <div style="padding: 14px; border-radius: 12px; border: 1px solid #4E3A1E; background: #1A1813; display: flex; flex-direction: column; gap: 8px; line-height: 1.5">
+      <span style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 50%; background: #5BD48F" aria-hidden="true"></span><strong>Claude Code</strong><span style="color: #A0A8B3; font-size: 12px">reviewed layers 1–2</span></span>
+      <p style="margin: 0; color: #C9CED6">3 findings in #413. CI fails in #413, but the cause is <code>tokenBucket.ts:18</code> in #412.</p>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap">
+        <button type="button" onClick="{{ jumpCi }}" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Go to root cause</button>
+        <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Review layers 3–5</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<section aria-label="Selected diff" style="margin: 16px 20px 20px; border-radius: 12px; border: 1px solid #1E232A; background: #13161B; display: flex; flex-direction: column; min-height: 0">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #1E232A">
+    <span style="font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #1B2330; color: #A9CBFF">Layer {{ sel.layer }} · #{{ sel.pr }}</span>
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px">{{ sel.file }}</span>
+    <div style="flex: 1 1 auto"></div>
+    <span style="color: #A0A8B3; font-size: 12px">Open in layer view ↵</span>
+  </div>
+  <sc-if value="{{ hasDiff }}" hint-placeholder-val="{{ true }}">
+    <div style="overflow: auto; max-height: 300px; padding: 6px 0 14px">
+      <sc-for list="{{ diff }}" as="ln" hint-placeholder-count="10">
+        <div style="display: flex; background: {{ ln.bg }}; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 20px">
+          <span style="flex: 0 0 44px; text-align: right; padding-right: 8px; color: #8A939F">{{ ln.nl }}</span>
+          <span style="flex: 0 0 14px; color: {{ ln.flagColor }}">{{ ln.flag }}</span>
+          <span style="flex: 0 0 16px; color: {{ ln.markColor }}">{{ ln.mark }}</span>
+          <span style="flex: 1 1 auto; white-space: pre; color: {{ ln.fg }}">{{ ln.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+  <sc-if value="{{ noDiff }}" hint-placeholder-val="{{ false }}">
+    <p style="margin: 0; padding: 18px 16px; color: #A0A8B3">The mock only has diffs for layer 2. In the app, this shows {{ sel.file }} as changed by #{{ sel.pr }}.</p>
+  </sc-if>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var LAYERS = [
+  { n: 1, pr: 412, state: "Approved", stateColor: "#7FE0AA", checks: "pass" },
+  { n: 2, pr: 413, state: "Reviewing · 2/4", stateColor: "#A9CBFF", checks: "fail" },
+  { n: 3, pr: 415, state: "3 new commits", stateColor: "#F0D27A", checks: "pending" },
+  { n: 4, pr: 416, state: "Not started", stateColor: "#A0A8B3", checks: "pass" },
+  { n: 5, pr: 418, state: "Not started", stateColor: "#A0A8B3", checks: "pass" }
+];
+var CHECK = { pass: ["✓", "#5BD48F", "checks pass"], fail: ["✕", "#FF8A80", "check failing"], pending: ["●", "#E8C65A", "checks running"] };
+var MATRIX = [
+  ["src/limiter/tokenBucket.ts", { 1: [64, 0], 3: [6, 2] }],
+  ["src/limiter/index.ts", { 1: [8, 0] }],
+  ["test/limiter/tokenBucket.test.ts", { 1: [70, 0] }],
+  ["src/config/schema.ts", { 2: [6, 0], 3: [22, 10] }],
+  ["src/middleware/rateLimit.ts", { 2: [20, 0], 3: [18, 9], 4: [12, 1] }],
+  ["src/server.ts", { 2: [3, 1], 4: [5, 1] }],
+  ["test/middleware/rateLimit.test.ts", { 2: [14, 0], 3: [30, 0] }],
+  ["src/config/tenants.ts", { 3: [12, 0] }],
+  ["src/metrics/limiter.ts", { 4: [40, 0] }],
+  ["docs/rate-limiting.md", { 5: [120, 0] }],
+  ["dashboards/limiter.json", { 5: [90, 0] }]
+];
+var MARKS = {
+  "2|src/middleware/rateLimit.ts": { find: "●3" },
+  "1|src/limiter/tokenBucket.ts": { ci: "▲" },
+  "2|test/middleware/rateLimit.test.ts": { thread: "◆" }
+};
+var VIEWED = { "1|src/limiter/tokenBucket.ts": true, "1|src/limiter/index.ts": true, "1|test/limiter/tokenBucket.test.ts": true, "2|src/server.ts": true, "2|src/config/schema.ts": true };
+var CODE = {
+  "src/middleware/rateLimit.ts": { o: 0, n: 1, header: "@@ -0,0 +1,20 @@", rows: [
+    "+import { TokenBucket } from '../limiter/tokenBucket';",
+    "+import type { Request, Response, NextFunction } from 'express';",
+    "+",
+    "+const buckets = new Map<string, TokenBucket>();",
+    "+",
+    "+export function rateLimit(opts: { capacity: number; refillPerSec: number }) {",
+    "+  return (req: Request, res: Response, next: NextFunction) => {",
+    "+    const key = req.ip;",
+    "+    let bucket = buckets.get(key);",
+    "+    if (!bucket) {",
+    "+      bucket = new TokenBucket(opts.capacity, opts.refillPerSec);",
+    "+      buckets.set(key, bucket);",
+    "+    }",
+    "+    if (!bucket.take()) {",
+    "+      res.setHeader('Retry-After', '1');",
+    "+      return res.status(429).json({ error: 'rate_limited' });",
+    "+    }",
+    "+    next();",
+    "+  };",
+    "+}"
+  ] },
+  "src/server.ts": { o: 12, n: 12, header: "@@ -12,5 +12,7 @@ import express from 'express';", rows: [
+    " import { healthRouter } from './routes/health';",
+    "+import { rateLimit } from './middleware/rateLimit';",
+    " ",
+    " const app = express();",
+    "-app.use(express.json());",
+    "+app.use(express.json({ limit: '1mb' }));",
+    "+app.use(rateLimit(config.rateLimit));",
+    " app.use('/health', healthRouter);"
+  ] },
+  "src/config/schema.ts": { o: 30, n: 30, header: "@@ -30,3 +30,9 @@ export const configSchema = z.object({", rows: [
+    "   port: z.number().default(8080),",
+    "   logLevel: z.enum(['debug', 'info', 'warn']).default('info'),",
+    "+  rateLimit: z",
+    "+    .object({",
+    "+      capacity: z.number().int().positive().default(100),",
+    "+      refillPerSec: z.number().positive().default(10),",
+    "+    })",
+    "+    .default({}),",
+    " });"
+  ] },
+  "test/middleware/rateLimit.test.ts": { o: 0, n: 1, header: "@@ -0,0 +1,14 @@", rows: [
+    "+import request from 'supertest';",
+    "+import express from 'express';",
+    "+import { rateLimit } from '../../src/middleware/rateLimit';",
+    "+",
+    "+describe('rateLimit', () => {",
+    "+  it('returns 429 after capacity', async () => {",
+    "+    const app = express();",
+    "+    app.use(rateLimit({ capacity: 2, refillPerSec: 0 }));",
+    "+    app.get('/', (_req, res) => res.send('ok'));",
+    "+    await request(app).get('/').expect(200);",
+    "+    await request(app).get('/').expect(200);",
+    "+    await request(app).get('/').expect(429);",
+    "+  });",
+    "+});"
+  ] }
+};
+var FLAG_LINES = { "src/middleware/rateLimit.ts": { 4: "#FFB4AA", 8: "#F5C77E", 15: "#B9C7D8" }, "test/middleware/rateLimit.test.ts": { 6: "#A9CBFF" } };
+function heat(total) {
+  if (total < 10) return "#18212E";
+  if (total < 30) return "#1C2B40";
+  if (total < 80) return "#223652";
+  return "#2A4467";
+}
+function buildDiff(path) {
+  var c = CODE[path];
+  var o = c.o, n = c.n, flags = FLAG_LINES[path] || {};
+  var out = [{ nl: "", mark: "", flag: "", flagColor: "", text: c.header, bg: "#151B25", fg: "#8FB0D8", markColor: "#8FB0D8" }];
+  c.rows.forEach(function (r) {
+    var t = r.charAt(0), text = r.slice(1), line;
+    if (t === "+") line = { nl: n++, mark: "+", bg: "#0F2418", fg: "#D6F5E0", markColor: "#5BD48F" };
+    else if (t === "-") { line = { nl: "", mark: "−", bg: "#2A1416", fg: "#F7D4D1", markColor: "#FF8A80" }; o++; }
+    else { line = { nl: n++, mark: "", bg: "transparent", fg: "#C9CED6", markColor: "#8A939F" }; o++; }
+    line.text = text;
+    line.flag = flags[line.nl] ? "●" : ""; line.flagColor = flags[line.nl] || "";
+    out.push(line);
+  });
+  return out;
+}
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { layer: 2, file: "src/middleware/rateLimit.ts" };
+  }
+  renderVals() {
+    var self = this, s = this.state;
+    var cols = LAYERS.map(function (l) {
+      var sel = l.n === s.layer, ck = CHECK[l.checks];
+      return {
+        n: l.n, pr: l.pr, stateLabel: l.state, stateColor: l.stateColor, checkIcon: ck[0], checkColor: ck[1], checkSr: ck[2],
+        bg: sel ? "#1B2330" : "#161A20", bd: sel ? "#2F4A70" : "#22272E",
+        pick: function () {
+          var first = MATRIX.filter(function (m) { return m[1][l.n]; })[0];
+          self.setState({ layer: l.n, file: first[0] });
+        }
+      };
+    });
+    var rows = MATRIX.map(function (m) {
+      var path = m[0], parts = path.split("/"), touched = Object.keys(m[1]).length;
+      return {
+        name: parts[parts.length - 1], dir: parts.slice(0, -1).join("/"),
+        touches: touched === 1 ? "1 layer" : touched + " layers",
+        fg: path === s.file ? "#A9CBFF" : "#E7E9EC",
+        cells: LAYERS.map(function (l) {
+          var v = m[1][l.n];
+          if (!v) return { touched: false, untouched: true };
+          var key = l.n + "|" + path, mk = MARKS[key] || {}, sel = l.n === s.layer && path === s.file;
+          return {
+            touched: true, untouched: false, add: v[0], delLabel: v[1] ? "−" + v[1] : "",
+            bg: heat(v[0] + v[1]), bd: sel ? "#A9CBFF" : "transparent",
+            findMark: mk.find || "", ciMark: mk.ci || "", threadMark: mk.thread || "", viewedMark: VIEWED[key] ? "✓" : "",
+            sr: path + " in layer " + l.n + ", +" + v[0] + " −" + v[1],
+            pick: function () { self.setState({ layer: l.n, file: path }); }
+          };
+        })
+      };
+    });
+    var cur = LAYERS.filter(function (l) { return l.n === s.layer; })[0];
+    var hasDiff = s.layer === 2 && !!CODE[s.file];
+    return {
+      cols: cols, rows: rows,
+      sel: { layer: s.layer, pr: cur.pr, file: s.file },
+      hasDiff: hasDiff, noDiff: !hasDiff,
+      diff: hasDiff ? buildDiff(s.file) : [],
+      jumpCi: function () { self.setState({ layer: 1, file: "src/limiter/tokenBucket.ts" }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

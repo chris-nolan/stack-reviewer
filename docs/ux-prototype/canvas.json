@@ -1,0 +1,25 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-11-12T14:05:00Z"},
+  "title": "Stack Reviewer UX concepts",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 900, "title": "A · Rail (three-pane IDE)", "expand": "fill", "is_interactive": true},
+    "GuidedPass.dc.html": {"x": 1520, "y": 0, "w": 1440, "h": 900, "title": "B · Guided pass (one file at a time)", "expand": "fill", "is_interactive": true},
+    "AgentLed.dc.html": {"x": 0, "y": 1020, "w": 1440, "h": 900, "title": "C · Agent-led walkthrough", "expand": "fill", "is_interactive": true},
+    "StackMatrix.dc.html": {"x": 1520, "y": 1020, "w": 1440, "h": 900, "title": "D · Stack matrix (files × layers)", "expand": "fill", "is_interactive": true},
+    "Home.dc.html": {"x": 0, "y": 2400, "w": 1440, "h": 900, "title": "Hybrid 1 · Home", "expand": "fill", "is_interactive": true},
+    "Overview.dc.html": {"x": 1520, "y": 2400, "w": 1440, "h": 900, "title": "Hybrid 2 · Stack overview", "expand": "fill", "is_interactive": true},
+    "Review.dc.html": {"x": 3040, "y": 2400, "w": 1440, "h": 900, "title": "Hybrid 3 · Review a layer", "expand": "fill", "is_interactive": true}
+  },
+  "order": ["Main.dc.html", "GuidedPass.dc.html", "AgentLed.dc.html", "StackMatrix.dc.html", "Home.dc.html", "Overview.dc.html", "Review.dc.html"],
+  "notes": {
+    "title": {"x": 0, "y": -320, "text": "Stack Reviewer: four review-screen concepts", "kind": "title1", "maxW": 2960},
+    "criteria": {"x": 3040, "y": 0, "w": 440, "size": "m", "fill": "orange", "text": "How we'll judge them\n\n1. Orientation: always know which layer you're on and how far through the stack you are\n2. Throughput: move file to file and hunk to hunk from the keyboard\n3. Re-review: what changed since last time is obvious\n4. Agent fit: findings land in context, are quick to triage, and it's clear what is published vs draft\n5. Signal: checks, threads and CI failures visible without hunting\n6. Calm: focus on the code, little chrome\n\nAll four use the same mock: 5-layer 'Rate limiting' stack, reviewing layer #413. Click layers, files, findings and buttons."},
+    "hybridTitle": {"x": 0, "y": 2080, "text": "Chosen direction: hybrid (B's flow + A's rail and dock + C's reading order + D as overview)", "kind": "title1", "maxW": 4480},
+    "hybridFlow": {"x": 4560, "y": 2400, "w": 440, "size": "m", "fill": "green", "text": "Prototype flow\n\nHome → open a stack → Overview → Start review → Review\n\nPress Play on Home and click through. Every stack row opens the Rate limiting mock.\n\nIn Review:\n• collapse the layer rail\n• toggle the agent dock\n• j = mark viewed & next\n• Draft / Dismiss findings in the margin\n• Finish layer… opens the verdict"},
+    "scenario": {"x": 3040, "y": 640, "w": 440, "size": "m", "fill": "blue", "text": "Scenario\n\nYou approved #412 yesterday. #413 is waiting for you, CI is red, and Claude Code has found 3 issues. #415 got new commits since you last looked."}
+  },
+  "designSystems": []
+}

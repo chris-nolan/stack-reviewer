@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concept A · Rail</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0F12}
+a{color:#7AB0FF}a:hover{color:#A9CBFF}
+</style>
+</helmet>
+<div style="min-height: 900px; display: flex; flex-direction: column; background: #0D0F12; color: #E7E9EC; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 8px 16px; border-bottom: 1px solid #252A31; background: #111418">
+  <div style="display: flex; align-items: center; gap: 8px; font-weight: 600">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7AB0FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"></path><path d="m3 13 9 5 9-5"></path></svg>
+    <span>Stack Reviewer</span>
+  </div>
+  <nav aria-label="Breadcrumb" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: #A0A8B3">
+    <span>acme / orders-api</span><span aria-hidden="true">›</span>
+    <span>Rate limiting</span><span aria-hidden="true">›</span>
+    <span style="color: #E7E9EC">#{{ cur.pr }}</span>
+  </nav>
+  <div style="flex: 1 1 auto"></div>
+  <button type="button" style="display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid #2A3038; background: #161A20; color: #A0A8B3; font: inherit; cursor: pointer">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    Jump to file, layer or command
+    <kbd style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #232830; color: #C9CED6">⌘K</kbd>
+  </button>
+  <span style="color: #A0A8B3">Synced 12s ago</span>
+  <span aria-label="Signed in as you" style="width: 26px; height: 26px; border-radius: 50%; background: #2B3A52; display: grid; place-items: center; font-size: 11px; font-weight: 600">CN</span>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; min-height: 0">
+
+  <aside style="flex: 1 1 280px; max-width: 320px; display: flex; flex-direction: column; border-right: 1px solid #252A31; background: #111418">
+    <div style="padding: 14px 14px 8px; display: flex; justify-content: space-between; align-items: baseline">
+      <span style="font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #A0A8B3; font-weight: 600">Stack · 5 layers</span>
+      <span style="font-size: 12px; color: #A0A8B3">1 of 5 reviewed</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 8px 10px">
+      <sc-for list="{{ rail }}" as="l" hint-placeholder-count="5">
+        <button type="button" onClick="{{ l.pick }}" style="display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid {{ l.bd }}; background: {{ l.bg }}; color: inherit; font: inherit; cursor: pointer">
+          <span style="display: flex; flex-direction: column; align-items: center; padding-top: 3px">
+            <span style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid {{ l.dot }}; background: {{ l.dotFill }}"></span>
+          </span>
+          <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="display: flex; gap: 6px; align-items: baseline"><span style="color: #A0A8B3; font-family: 'JetBrains Mono', monospace; font-size: 12px">#{{ l.pr }}</span><span style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ l.title }}</span></span>
+            <span style="display: flex; gap: 8px; font-size: 12px"><span style="color: {{ l.noteColor }}">{{ l.note }}</span><span style="color: {{ l.checkColor }}">{{ l.checkLabel }}</span></span>
+          </span>
+        </button>
+      </sc-for>
+      <div style="display: flex; gap: 10px; align-items: center; padding: 6px 12px; color: #A0A8B3; font-size: 12px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3v12"></path><circle cx="6" cy="18" r="3"></circle></svg>
+        main
+      </div>
+    </div>
+
+    <div style="border-top: 1px solid #252A31; padding: 14px 14px 8px; display: flex; justify-content: space-between; align-items: baseline">
+      <span style="font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #A0A8B3; font-weight: 600">Files in #{{ cur.pr }}</span>
+      <span style="font-size: 12px; color: #A0A8B3">{{ viewedCount }} of 4 viewed</span>
+    </div>
+    <sc-if value="{{ mock }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 1px; padding: 0 8px 12px">
+        <sc-for list="{{ files }}" as="f" hint-placeholder-count="4">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; background: {{ f.bg }}">
+            <input type="checkbox" id="{{ f.id }}" checked="{{ f.viewed }}" onChange="{{ f.toggle }}" aria-label="Mark {{ f.name }} viewed" style="accent-color: #7AB0FF; width: 14px; height: 14px; margin: 0">
+            <button type="button" onClick="{{ f.pick }}" style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; text-align: left; padding: 4px 2px; border: 0; background: transparent; color: {{ f.fg }}; font: inherit; cursor: pointer">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ f.name }}</span>
+              <span style="font-size: 11px; color: #8A939F">{{ f.dir }}</span>
+            </button>
+            <sc-if value="{{ f.hasFindings }}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #352816; color: #F5C77E">{{ f.openFindings }}</span></sc-if>
+            <sc-if value="{{ f.hasThread }}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #1B2636; color: #A9CBFF">1 thread</span></sc-if>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5BD48F">+{{ f.add }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ notMock }}" hint-placeholder-val="{{ false }}">
+      <p style="margin: 0; padding: 4px 16px 16px; color: #A0A8B3; font-size: 12px; line-height: 1.5">This mock only has file data for #413. Switching layers shows how the rail and header respond.</p>
+    </sc-if>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: #13161B">
+    <div style="padding: 16px 20px 0; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid #252A31">
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+        <span style="font-size: 12px; color: #A0A8B3">Layer {{ cur.n }} of 5</span>
+        <span style="font-size: 12px; padding: 2px 8px; border-radius: 10px; background: {{ cur.reviewBg }}; color: {{ cur.reviewFg }}">{{ cur.review }}</span>
+        <span style="font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #1A1F26; color: {{ cur.checkColor }}">{{ cur.checkLabel }}</span>
+      </div>
+      <h1 style="margin: 0; font-size: 19px; font-weight: 600">{{ cur.title }}</h1>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; color: #A0A8B3; font-size: 12px">
+        <span>alex-r opened 2 days ago</span>
+        <span style="font-family: 'JetBrains Mono', monospace">{{ cur.base }} ← {{ cur.head }}</span>
+        <span style="color: #5BD48F">+{{ cur.add }}</span><span style="color: #FF8A80">−{{ cur.del }}</span>
+      </div>
+      <div role="tablist" aria-label="Layer sections" style="display: flex; gap: 4px; margin-top: 4px">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+          <button type="button" role="tab" aria-selected="{{ t.sel }}" onClick="{{ t.pick }}" style="padding: 8px 12px; border: 0; border-bottom: 2px solid {{ t.bd }}; background: transparent; color: {{ t.fg }}; font: inherit; font-weight: 500; cursor: pointer">{{ t.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-if value="{{ showFiles }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid #1E232A; background: #12151A">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px">{{ file.path }}</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5BD48F">+{{ file.add }}</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #FF8A80">−{{ file.del }}</span>
+        <div style="flex: 1 1 auto"></div>
+        <div role="group" aria-label="Diff layout" style="display: flex; border: 1px solid #2A3038; border-radius: 6px; overflow: hidden">
+          <button type="button" style="padding: 4px 10px; border: 0; background: #232A35; color: #E7E9EC; font: inherit; font-size: 12px">Unified</button>
+          <button type="button" style="padding: 4px 10px; border: 0; background: transparent; color: #A0A8B3; font: inherit; font-size: 12px">Split</button>
+        </div>
+        <button type="button" style="padding: 4px 10px; border: 1px solid #2A3038; border-radius: 6px; background: transparent; color: #A0A8B3; font: inherit; font-size: 12px">Since my review</button>
+      </div>
+      <div style="flex: 1 1 auto; overflow: auto; max-height: 640px; padding: 6px 0 24px">
+        <sc-for list="{{ diff }}" as="ln" hint-placeholder-count="14">
+          <div style="display: flex; background: {{ ln.bg }}; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 20px">
+            <span style="flex: 0 0 44px; text-align: right; padding-right: 8px; color: #8A939F">{{ ln.ol }}</span>
+            <span style="flex: 0 0 44px; text-align: right; padding-right: 8px; color: #8A939F">{{ ln.nl }}</span>
+            <span style="flex: 0 0 14px; color: {{ ln.flagColor }}">{{ ln.flag }}</span>
+            <span style="flex: 0 0 16px; color: {{ ln.markColor }}">{{ ln.mark }}</span>
+            <span style="flex: 1 1 auto; white-space: pre; color: {{ ln.fg }}">{{ ln.text }}</span>
+          </div>
+          <sc-if value="{{ ln.hasFinding }}" hint-placeholder-val="{{ false }}">
+            <div style="margin: 6px 20px 10px 118px; padding: 12px 14px; border-radius: 10px; border: 1px solid {{ ln.finding.border }}; background: #19171A; display: flex; flex-direction: column; gap: 8px; font-family: Inter, system-ui, sans-serif">
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                <span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: {{ ln.finding.sevBg }}; color: {{ ln.finding.sevFg }}">{{ ln.finding.sev }}</span>
+                <span style="font-weight: 600">{{ ln.finding.title }}</span>
+                <span style="color: #A0A8B3; font-size: 12px">Claude Code · finding</span>
+              </div>
+              <p style="margin: 0; color: #C9CED6; line-height: 1.5">{{ ln.finding.body }}</p>
+              <sc-if value="{{ ln.finding.hasSuggestion }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 8px 10px; border-radius: 6px; background: #0F2418; color: #D6F5E0; white-space: pre-wrap">Suggested change
++ {{ ln.finding.suggestion }}</div>
+              </sc-if>
+              <sc-if value="{{ ln.finding.isOpen }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; gap: 8px">
+                  <button type="button" onClick="{{ ln.finding.accept }}" style="padding: 6px 12px; border-radius: 6px; border: 0; background: #7AB0FF; color: #0D0F12; font: inherit; font-weight: 600; cursor: pointer">Add as draft comment</button>
+                  <button type="button" onClick="{{ ln.finding.dismiss }}" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Dismiss</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ ln.finding.isClosed }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; gap: 10px; align-items: center; color: #A0A8B3; font-size: 12px">
+                  <span>{{ ln.finding.closedLabel }}</span>
+                  <button type="button" onClick="{{ ln.finding.undo }}" style="padding: 2px 8px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; font-size: 12px; cursor: pointer">Undo</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ ln.hasThread }}" hint-placeholder-val="{{ false }}">
+            <div style="margin: 6px 20px 10px 118px; padding: 12px 14px; border-radius: 10px; border: 1px solid #2A3A52; background: #151A22; display: flex; flex-direction: column; gap: 8px; font-family: Inter, system-ui, sans-serif">
+              <div><strong>priya-k</strong> <span style="color: #A0A8B3; font-size: 12px">· yesterday</span></div>
+              <p style="margin: 0; color: #C9CED6">Can we add a case for the refill path too? Fake timers would make it deterministic.</p>
+              <div><strong>alex-r</strong> <span style="color: #A0A8B3; font-size: 12px">· yesterday</span></div>
+              <p style="margin: 0; color: #C9CED6">Good call, will add in #415.</p>
+              <div style="display: flex; gap: 8px">
+                <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Reply</button>
+                <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Resolve</button>
+              </div>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showChecks }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; max-width: 860px">
+        <sc-for list="{{ checks }}" as="c" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid #252A31; background: #161A20">
+            <span style="width: 18px; color: {{ c.color }}; font-weight: 700">{{ c.icon }}</span>
+            <span style="flex: 1 1 auto; font-weight: 500">{{ c.name }}</span>
+            <span style="color: #A0A8B3; font-size: 12px">{{ c.time }}</span>
+          </div>
+        </sc-for>
+        <div style="margin-top: 6px; padding: 12px; border-radius: 8px; border: 1px solid #4A2623; background: #1A1214">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+            <strong>test / node 20, failing step: npm test</strong>
+            <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Re-run failed jobs</button>
+          </div>
+          <pre style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; color: #F7D4D1; white-space: pre-wrap">FAIL test/middleware/rateLimit.test.ts
+  rateLimit › returns 429 after capacity
+    expected 429 "Too Many Requests", got 200 "OK"
+      at test/middleware/rateLimit.test.ts:12:38</pre>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showConvo }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; max-width: 760px; line-height: 1.55">
+        <div style="padding: 14px; border-radius: 8px; border: 1px solid #252A31; background: #161A20">
+          <div style="margin-bottom: 6px"><strong>alex-r</strong> <span style="color: #A0A8B3; font-size: 12px">· description</span></div>
+          <p style="margin: 0; color: #C9CED6">Mounts the token bucket from #412 as Express middleware, keyed by client IP. Limits come from the new <code>rateLimit</code> config block. Per-tenant limits follow in #415.</p>
+        </div>
+        <p style="margin: 0; color: #A0A8B3">1 open review thread, on test/middleware/rateLimit.test.ts</p>
+      </div>
+    </sc-if>
+
+    <footer style="margin-top: auto; display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 20px; border-top: 1px solid #252A31; color: #A0A8B3; font-size: 12px; background: #111418">
+      <span><kbd style="font-family: 'JetBrains Mono', monospace">j</kbd>/<kbd style="font-family: 'JetBrains Mono', monospace">k</kbd> file</span>
+      <span><kbd style="font-family: 'JetBrains Mono', monospace">n</kbd>/<kbd style="font-family: 'JetBrains Mono', monospace">p</kbd> hunk</span>
+      <span><kbd style="font-family: 'JetBrains Mono', monospace">v</kbd> viewed</span>
+      <span><kbd style="font-family: 'JetBrains Mono', monospace">c</kbd> comment</span>
+      <span><kbd style="font-family: 'JetBrains Mono', monospace">[</kbd>/<kbd style="font-family: 'JetBrains Mono', monospace">]</kbd> layer</span>
+      <span><kbd style="font-family: 'JetBrains Mono', monospace">a</kbd> ask agent</span>
+    </footer>
+  </main>
+
+  <aside aria-label="Agent" style="flex: 1 1 320px; max-width: 380px; display: flex; flex-direction: column; border-left: 1px solid #252A31; background: #111418">
+    <div style="display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #252A31">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #5BD48F" aria-hidden="true"></span>
+      <label for="agentPick" style="font-weight: 600">Agent</label>
+      <select id="agentPick" style="flex: 1 1 auto; padding: 4px 6px; border-radius: 6px; border: 1px solid #2A3038; background: #161A20; color: #E7E9EC; font: inherit">
+        <option>Claude Code</option>
+        <option>Gemini CLI</option>
+      </select>
+    </div>
+    <div style="flex: 1 1 auto; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; line-height: 1.5">
+      <div style="align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 12px; background: #1F2A3B">Review this layer</div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; color: #A0A8B3">Claude Code · read 9 files · ran <code>npm test</code> (you allowed)</span>
+        <p style="margin: 0; color: #DADDE2">I reviewed #413 against #412 and main. There are 3 findings in <code>rateLimit.ts</code>. The failing test isn't caused by this layer: <code>TokenBucket</code> in #412 treats <code>refillPerSec = 0</code> as unlimited (<code>tokenBucket.ts:18</code>).</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #A0A8B3; font-weight: 600">Findings · {{ openCount }} to triage</span>
+        <sc-for list="{{ findings }}" as="f" hint-placeholder-count="3">
+          <button type="button" onClick="{{ f.jump }}" style="display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px; border-radius: 8px; border: 1px solid #252A31; background: #161A20; color: inherit; font: inherit; cursor: pointer; opacity: {{ f.opacity }}">
+            <span style="display: flex; gap: 8px; align-items: center"><span style="font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: {{ f.sevBg }}; color: {{ f.sevFg }}">{{ f.sev }}</span><span style="font-weight: 500">{{ f.title }}</span></span>
+            <span style="font-size: 12px; color: #A0A8B3; font-family: 'JetBrains Mono', monospace">rateLimit.ts:{{ f.line }} · {{ f.statusLabel }}</span>
+          </button>
+        </sc-for>
+        <button type="button" style="padding: 10px; border-radius: 8px; border: 1px dashed #3A3328; background: transparent; color: #F5C77E; text-align: left; font: inherit; cursor: pointer">CI: root cause is in #412. Open layer 1 →</button>
+      </div>
+    </div>
+    <div style="padding: 12px 14px; border-top: 1px solid #252A31; display: flex; flex-direction: column; gap: 8px">
+      <label for="askA" style="font-size: 12px; color: #A0A8B3">Ask about #413 (sees the layer, the stack and the checks)</label>
+      <textarea id="askA" rows="2" placeholder="e.g. Is the middleware order in server.ts right?" style="resize: none; padding: 8px 10px; border-radius: 8px; border: 1px solid #2A3038; background: #161A20; color: #E7E9EC; font: inherit"></textarea>
+    </div>
+    <div style="padding: 12px 14px; border-top: 1px solid #252A31; display: flex; align-items: center; gap: 10px; background: #0F1215">
+      <span style="flex: 1 1 auto; color: #C9CED6">Pending review · <strong>{{ drafts }}</strong> drafts</span>
+      <button type="button" style="padding: 8px 14px; border-radius: 8px; border: 0; background: #7AB0FF; color: #0D0F12; font: inherit; font-weight: 600; cursor: pointer">Submit review…</button>
+    </div>
+  </aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var LAYERS = [
+  { n: 1, pr: 412, title: "Add token bucket limiter core", review: "Approved by you", tone: "ok", checks: "pass", state: "done", note: "Reviewed", add: 142, del: 0, head: "alex-r/limiter-core", base: "main" },
+  { n: 2, pr: 413, title: "Wire limiter into request middleware", review: "Your review requested", tone: "info", checks: "fail", state: "current", note: "2 of 4 files", add: 43, del: 1, head: "alex-r/limiter-middleware", base: "alex-r/limiter-core" },
+  { n: 3, pr: 415, title: "Per-tenant limits from config", review: "New commits since your review", tone: "warn", checks: "pending", state: "stale", note: "3 new commits", add: 88, del: 21, head: "alex-r/tenant-limits", base: "alex-r/limiter-middleware" },
+  { n: 4, pr: 416, title: "Expose limiter metrics", review: "Your review requested", tone: "info", checks: "pass", state: "todo", note: "Not started", add: 57, del: 2, head: "alex-r/limiter-metrics", base: "alex-r/tenant-limits" },
+  { n: 5, pr: 418, title: "Docs and Grafana dashboard", review: "Your review requested", tone: "info", checks: "pass", state: "todo", note: "Not started", add: 210, del: 0, head: "alex-r/limiter-docs", base: "alex-r/limiter-metrics" }
+];
+var CHECK_LABEL = { pass: "✓ Checks pass", fail: "✕ 1 check failing", pending: "● Checks running" };
+var CHECK_COLOR = { pass: "#5BD48F", fail: "#FF8A80", pending: "#E8C65A" };
+var STATE_RING = { done: "#5BD48F", current: "#7AB0FF", stale: "#E8C65A", todo: "#5A626D" };
+var STATE_FILL = { done: "#5BD48F", current: "transparent", stale: "transparent", todo: "transparent" };
+var NOTE_COLOR = { done: "#A0A8B3", current: "#A9CBFF", stale: "#E8C65A", todo: "#A0A8B3" };
+var TONE = { ok: ["#12291D", "#7FE0AA"], info: ["#1B2636", "#A9CBFF"], warn: ["#2F2914", "#F0D27A"] };
+var SEV = { High: ["#3A1D1A", "#FFB4AA", "#5A2C27"], Medium: ["#352816", "#F5C77E", "#4E3A1E"], Low: ["#1E2733", "#B9C7D8", "#2E3A4A"] };
+
+var CODE = {
+  "src/middleware/rateLimit.ts": { add: 20, del: 0, header: "@@ -0,0 +1,20 @@", o: 0, n: 1, rows: [
+    "+import { TokenBucket } from '../limiter/tokenBucket';",
+    "+import type { Request, Response, NextFunction } from 'express';",
+    "+",
+    "+const buckets = new Map<string, TokenBucket>();",
+    "+",
+    "+export function rateLimit(opts: { capacity: number; refillPerSec: number }) {",
+    "+  return (req: Request, res: Response, next: NextFunction) => {",
+    "+    const key = req.ip;",
+    "+    let bucket = buckets.get(key);",
+    "+    if (!bucket) {",
+    "+      bucket = new TokenBucket(opts.capacity, opts.refillPerSec);",
+    "+      buckets.set(key, bucket);",
+    "+    }",
+    "+    if (!bucket.take()) {",
+    "+      res.setHeader('Retry-After', '1');",
+    "+      return res.status(429).json({ error: 'rate_limited' });",
+    "+    }",
+    "+    next();",
+    "+  };",
+    "+}"
+  ] },
+  "src/server.ts": { add: 3, del: 1, header: "@@ -12,5 +12,7 @@ import express from 'express';", o: 12, n: 12, rows: [
+    " import { healthRouter } from './routes/health';",
+    "+import { rateLimit } from './middleware/rateLimit';",
+    " ",
+    " const app = express();",
+    "-app.use(express.json());",
+    "+app.use(express.json({ limit: '1mb' }));",
+    "+app.use(rateLimit(config.rateLimit));",
+    " app.use('/health', healthRouter);"
+  ] },
+  "src/config/schema.ts": { add: 6, del: 0, header: "@@ -30,3 +30,9 @@ export const configSchema = z.object({", o: 30, n: 30, rows: [
+    "   port: z.number().default(8080),",
+    "   logLevel: z.enum(['debug', 'info', 'warn']).default('info'),",
+    "+  rateLimit: z",
+    "+    .object({",
+    "+      capacity: z.number().int().positive().default(100),",
+    "+      refillPerSec: z.number().positive().default(10),",
+    "+    })",
+    "+    .default({}),",
+    " });"
+  ] },
+  "test/middleware/rateLimit.test.ts": { add: 14, del: 0, header: "@@ -0,0 +1,14 @@", o: 0, n: 1, rows: [
+    "+import request from 'supertest';",
+    "+import express from 'express';",
+    "+import { rateLimit } from '../../src/middleware/rateLimit';",
+    "+",
+    "+describe('rateLimit', () => {",
+    "+  it('returns 429 after capacity', async () => {",
+    "+    const app = express();",
+    "+    app.use(rateLimit({ capacity: 2, refillPerSec: 0 }));",
+    "+    app.get('/', (_req, res) => res.send('ok'));",
+    "+    await request(app).get('/').expect(200);",
+    "+    await request(app).get('/').expect(200);",
+    "+    await request(app).get('/').expect(429);",
+    "+  });",
+    "+});"
+  ] }
+};
+var FILE_ORDER = ["src/middleware/rateLimit.ts", "src/server.ts", "src/config/schema.ts", "test/middleware/rateLimit.test.ts"];
+var THREAD = { file: "test/middleware/rateLimit.test.ts", line: 6 };
+var FINDINGS = [
+  { id: "f1", sev: "High", file: "src/middleware/rateLimit.ts", line: 4, title: "Bucket map never evicts", body: "One TokenBucket per client IP is kept for the life of the process, so under real traffic this grows without bound. Use an LRU (max ~10k entries) or sweep idle buckets.", suggestion: "const buckets = new LRUCache<string, TokenBucket>({ max: 10_000 });" },
+  { id: "f2", sev: "Medium", file: "src/middleware/rateLimit.ts", line: 8, title: "req.ip is the load balancer, not the client", body: "Without app.set('trust proxy', …) every request behind the LB shares one bucket. Nothing in this stack sets it.", suggestion: "" },
+  { id: "f3", sev: "Low", file: "src/middleware/rateLimit.ts", line: 15, title: "Retry-After is hard-coded", body: "Layer #412 already exposes bucket.msUntilNextToken(). Derive the header from it.", suggestion: "res.setHeader('Retry-After', String(Math.ceil(bucket.msUntilNextToken() / 1000)));" }
+];
+
+function buildDiff(path, decorate) {
+  var c = CODE[path];
+  var o = c.o, n = c.n;
+  var out = [{ ol: "", nl: "", mark: "", flag: "", flagColor: "", text: c.header, bg: "#151B25", fg: "#8FB0D8", markColor: "#8FB0D8", hasFinding: false, hasThread: false }];
+  c.rows.forEach(function (r) {
+    var t = r.charAt(0), text = r.slice(1), line;
+    if (t === "+") line = { ol: "", nl: n++, mark: "+", bg: "#0F2418", fg: "#D6F5E0", markColor: "#5BD48F" };
+    else if (t === "-") line = { ol: o++, nl: "", mark: "−", bg: "#2A1416", fg: "#F7D4D1", markColor: "#FF8A80" };
+    else line = { ol: o++, nl: n++, mark: "", bg: "transparent", fg: "#C9CED6", markColor: "#8A939F" };
+    line.text = text;
+    line.flag = ""; line.flagColor = "#F5C77E";
+    line.hasFinding = false; line.hasThread = false;
+    decorate(path, line);
+    out.push(line);
+  });
+  return out;
+}
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { layer: 2, file: FILE_ORDER[0], tab: "files", viewed: { "src/server.ts": true, "src/config/schema.ts": true }, fs: { f1: "open", f2: "open", f3: "open" } };
+  }
+  setFinding(id, v) {
+    var fs = Object.assign({}, this.state.fs); fs[id] = v; this.setState({ fs: fs });
+  }
+  renderVals() {
+    var self = this, s = this.state;
+    var cur0 = LAYERS.filter(function (l) { return l.n === s.layer; })[0];
+    var cur = Object.assign({}, cur0, { reviewBg: TONE[cur0.tone][0], reviewFg: TONE[cur0.tone][1], checkLabel: CHECK_LABEL[cur0.checks], checkColor: CHECK_COLOR[cur0.checks] });
+    var rail = LAYERS.slice().reverse().map(function (l) {
+      var sel = l.n === s.layer;
+      return Object.assign({}, l, { bg: sel ? "#1B2330" : "transparent", bd: sel ? "#2F4A70" : "transparent", dot: STATE_RING[l.state], dotFill: STATE_FILL[l.state], noteColor: NOTE_COLOR[l.state], checkLabel: CHECK_LABEL[l.checks], checkColor: CHECK_COLOR[l.checks], pick: function () { self.setState({ layer: l.n }); } });
+    });
+    var decorated = FINDINGS.map(function (f) {
+      var st = s.fs[f.id];
+      var sv = SEV[f.sev];
+      return Object.assign({}, f, {
+        sevBg: sv[0], sevFg: sv[1], border: sv[2],
+        hasSuggestion: !!f.suggestion,
+        isOpen: st === "open", isClosed: st !== "open",
+        closedLabel: st === "accepted" ? "Added to your pending review as a draft comment" : "Dismissed",
+        statusLabel: st === "open" ? "to triage" : (st === "accepted" ? "drafted" : "dismissed"),
+        opacity: st === "dismissed" ? "0.55" : "1",
+        accept: function () { self.setFinding(f.id, "accepted"); },
+        dismiss: function () { self.setFinding(f.id, "dismissed"); },
+        undo: function () { self.setFinding(f.id, "open"); },
+        jump: function () { self.setState({ file: f.file, tab: "files", layer: 2 }); }
+      });
+    });
+    var files = FILE_ORDER.map(function (p, i) {
+      var parts = p.split("/");
+      var open = decorated.filter(function (f) { return f.file === p && f.isOpen; }).length;
+      var sel = p === s.file;
+      return {
+        id: "fileA" + i, path: p, name: parts[parts.length - 1], dir: parts.slice(0, -1).join("/"),
+        add: CODE[p].add, viewed: !!s.viewed[p], sel: sel,
+        bg: sel ? "#1B2330" : "transparent", fg: s.viewed[p] && !sel ? "#A0A8B3" : "#E7E9EC",
+        hasFindings: open > 0, openFindings: open + (open === 1 ? " finding" : " findings"),
+        hasThread: p === THREAD.file,
+        pick: function () { self.setState({ file: p, tab: "files" }); },
+        toggle: function () { var v = Object.assign({}, s.viewed); v[p] = !v[p]; self.setState({ viewed: v }); }
+      };
+    });
+    var diff = buildDiff(s.file, function (path, line) {
+      decorated.forEach(function (f) {
+        if (f.file === path && f.line === line.nl) { line.hasFinding = f.isOpen || s.fs[f.id] === "accepted"; line.finding = f; line.flag = "●"; line.flagColor = f.sevFg; }
+      });
+      if (path === THREAD.file && line.nl === THREAD.line) { line.hasThread = true; line.flag = "●"; line.flagColor = "#A9CBFF"; }
+    });
+    var tabsDef = [["files", "Files · 4"], ["convo", "Conversation · 1"], ["checks", "Checks · 1 failing"]];
+    var tabs = tabsDef.map(function (t) {
+      var sel = s.tab === t[0];
+      return { label: t[1], sel: sel ? "true" : "false", fg: sel ? "#E7E9EC" : "#A0A8B3", bd: sel ? "#7AB0FF" : "transparent", pick: function () { self.setState({ tab: t[0] }); } };
+    });
+    var mock = s.layer === 2;
+    var checks = [
+      { name: "lint", icon: "✓", color: "#5BD48F", time: "18s" },
+      { name: "typecheck", icon: "✓", color: "#5BD48F", time: "41s" },
+      { name: "build", icon: "✓", color: "#5BD48F", time: "1m 02s" },
+      { name: "test / node 20", icon: "✕", color: "#FF8A80", time: "1m 37s" },
+      { name: "CodeQL", icon: "●", color: "#E8C65A", time: "running" }
+    ];
+    return {
+      cur: cur, rail: rail, files: files, diff: diff, tabs: tabs, checks: checks,
+      file: { path: s.file, add: CODE[s.file].add, del: CODE[s.file].del },
+      findings: decorated,
+      mock: mock, notMock: !mock,
+      showFiles: mock && s.tab === "files", showChecks: mock && s.tab === "checks", showConvo: mock && s.tab === "convo",
+      viewedCount: FILE_ORDER.filter(function (p) { return s.viewed[p]; }).length,
+      openCount: decorated.filter(function (f) { return f.isOpen; }).length,
+      drafts: decorated.filter(function (f) { return s.fs[f.id] === "accepted"; }).length
+    };
+  }
+}
+</script>
+</body>
+</html>

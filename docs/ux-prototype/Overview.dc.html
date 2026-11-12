@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stack Reviewer · Stack overview</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0F12}
+a{color:#7AB0FF}a:hover{color:#A9CBFF}
+</style>
+</helmet>
+<div style="min-height: 900px; display: flex; flex-direction: column; background: #0D0F12; color: #E7E9EC; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px 20px; border-bottom: 1px solid #1E232A; background: #111418">
+  <a href="Home.dc.html" style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid #2A3038; color: #C9CED6; text-decoration: none">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+    Inbox
+  </a>
+  <nav aria-label="Breadcrumb" style="display: flex; gap: 6px; color: #A0A8B3"><span>acme / orders-api</span><span aria-hidden="true">›</span><span style="color: #E7E9EC">Rate limiting</span></nav>
+  <div style="flex: 1 1 auto"></div>
+  <button type="button" style="display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid #2A3038; background: #161A20; color: #A0A8B3; font: inherit; cursor: pointer">Jump to… <kbd style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #232830; color: #C9CED6">⌘K</kbd></button>
+</header>
+
+<section style="padding: 20px 24px 0; display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end">
+    <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 6px">
+      <span style="color: #A0A8B3">alex-r · opened 3 days ago · native GitHub stack</span>
+      <h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em">Rate limiting</h1>
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; color: #A0A8B3">
+        <span><strong style="color: #E7E9EC">5</strong> layers</span>
+        <span><strong style="color: #E7E9EC">11</strong> files</span>
+        <span style="font-family: 'JetBrains Mono', monospace"><span style="color: #5BD48F">+540</span> <span style="color: #FF8A80">−24</span></span>
+        <span><strong style="color: #E7E9EC">1</strong> of 5 reviewed by you</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px">
+      <button type="button" style="padding: 9px 14px; border-radius: 8px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Pin</button>
+      <button type="button" style="padding: 9px 14px; border-radius: 8px; border: 1px solid #4E3A1E; background: #221C14; color: #F5C77E; font: inherit; font-weight: 500; cursor: pointer">Ask Claude Code to review layers 3–5</button>
+      <a href="Review.dc.html" style="padding: 9px 16px; border-radius: 8px; background: #7AB0FF; color: #0D0F12; font-weight: 600; text-decoration: none">Resume review at layer 2 →</a>
+    </div>
+  </div>
+  <div role="tablist" aria-label="Stack sections" style="display: flex; gap: 4px; border-bottom: 1px solid #1E232A">
+    <span role="tab" aria-selected="true" style="padding: 9px 12px; border-bottom: 2px solid #7AB0FF; font-weight: 500">Overview</span>
+    <a href="Review.dc.html" role="tab" aria-selected="false" style="padding: 9px 12px; color: #A0A8B3; text-decoration: none; font-weight: 500">Review</a>
+    <span role="tab" aria-selected="false" style="padding: 9px 12px; color: #A0A8B3; font-weight: 500">All conversation · 4</span>
+  </div>
+</section>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 20px; padding: 18px 24px 24px">
+  <section aria-label="Layers" style="flex: 1 1 400px; max-width: 520px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; align-items: center; gap: 8px; color: #A0A8B3; font-size: 12px; padding-left: 4px">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3v12"></path><circle cx="6" cy="18" r="3"></circle></svg>
+      based on <span style="font-family: 'JetBrains Mono', monospace">main</span> · review from layer 1 upward
+    </div>
+    <sc-for list="{{ layers }}" as="l" hint-placeholder-count="5">
+      <article style="display: flex; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid {{ l.bd }}; background: {{ l.bg }}">
+        <span style="flex: 0 0 28px; height: 28px; border-radius: 50%; border: 2px solid {{ l.ring }}; background: {{ l.fill }}; color: {{ l.numColor }}; display: grid; place-items: center; font-size: 12px; font-weight: 700">{{ l.n }}</span>
+        <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px">
+          <div style="display: flex; gap: 8px; align-items: baseline"><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A0A8B3">#{{ l.pr }}</span><strong style="font-weight: 600">{{ l.title }}</strong></div>
+          <p style="margin: 0; color: #C9CED6; line-height: 1.5">{{ l.summary }}</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px">
+            <span style="color: {{ l.stateColor }}">{{ l.state }}</span>
+            <span style="color: {{ l.checkColor }}">{{ l.checks }}</span>
+            <span style="color: #A0A8B3">{{ l.meta }}</span>
+          </div>
+        </div>
+        <sc-if value="{{ l.isCurrent }}" hint-placeholder-val="{{ false }}">
+          <a href="Review.dc.html" style="align-self: center; padding: 6px 10px; border-radius: 8px; background: #2B3A52; color: #E7E9EC; text-decoration: none; white-space: nowrap">Resume</a>
+        </sc-if>
+      </article>
+    </sc-for>
+  </section>
+
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <section aria-label="Files by layer" style="border-radius: 12px; border: 1px solid #1E232A; background: #13161B; overflow-x: auto">
+      <div style="min-width: 640px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px">
+          <strong>Where the stack touches the code</strong>
+          <span style="color: #A0A8B3; font-size: 12px">Darker = bigger change · ● findings · ▲ CI root cause · ✓ viewed</span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(220px, 2fr) repeat(5, minmax(0, 1fr)); gap: 4px; color: #A0A8B3; font-size: 12px">
+          <span>File</span><span>1 · #412</span><span>2 · #413</span><span>3 · #415</span><span>4 · #416</span><span>5 · #418</span>
+        </div>
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="11">
+          <div style="display: grid; grid-template-columns: minmax(220px, 2fr) repeat(5, minmax(0, 1fr)); gap: 4px; align-items: center">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: {{ r.fg }}">{{ r.path }}</span>
+            <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="5">
+              <div style="height: 26px">
+                <sc-if value="{{ c.touched }}" hint-placeholder-val="{{ true }}">
+                  <button type="button" onClick="{{ c.pick }}" aria-label="{{ c.sr }}" style="width: 100%; height: 26px; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 5px; border: 1px solid {{ c.bd }}; background: {{ c.bg }}; color: #9BE5B8; font-family: 'JetBrains Mono', monospace; font-size: 11px; cursor: pointer">+{{ c.add }}<span style="flex: 1 1 auto"></span><span style="color: #F5C77E">{{ c.find }}</span><span style="color: #FF8A80">{{ c.ci }}</span><span style="color: #7AB0FF">{{ c.viewed }}</span></button>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: #171B22; display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">{{ sel.path }}</span>
+          <span style="color: #A0A8B3">in layer {{ sel.layer }} · #{{ sel.pr }} · +{{ sel.add }} −{{ sel.del }}</span>
+          <div style="flex: 1 1 auto"></div>
+          <a href="Review.dc.html" style="text-decoration: none">Open in review →</a>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Cross-layer notes" style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 50%; background: #5BD48F" aria-hidden="true"></span><strong>Across layers</strong><span style="color: #A0A8B3; font-size: 12px">Claude Code · from layers 1–2, plus a skim of 3–5</span></div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <article style="flex: 1 1 260px; padding: 12px 14px; border-radius: 10px; border: 1px solid #4A2623; background: #1A1214; line-height: 1.5"><strong>CI on #413 is caused by #412</strong><p style="margin: 4px 0 0; color: #C9CED6"><code>TokenBucket</code> treats <code>refillPerSec = 0</code> as unlimited (<code>tokenBucket.ts:18</code>). You approved #412 yesterday.</p></article>
+        <article style="flex: 1 1 260px; padding: 12px 14px; border-radius: 10px; border: 1px solid #252A31; background: #14181E; line-height: 1.5"><strong>rateLimit.ts changes in 3 layers</strong><p style="margin: 4px 0 0; color: #C9CED6">#415 reworks the key function that #413 introduces. Some findings in #413 may already be fixed upstream.</p></article>
+        <article style="flex: 1 1 260px; padding: 12px 14px; border-radius: 10px; border: 1px solid #4A3F1C; background: #1C1A12; line-height: 1.5"><strong>#415 changed since your review</strong><p style="margin: 4px 0 0; color: #C9CED6">3 new commits. 2 only rebase onto #413; 1 real change to <code>tenants.ts</code>.</p></article>
+      </div>
+    </section>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var LAYERS = [
+  { n: 1, pr: 412, title: "Add token bucket limiter core", summary: "TokenBucket class with capacity and refill rate, plus unit tests. No callers yet.", state: "✓ Approved by you", stateColor: "#7FE0AA", checks: "✓ Checks pass", checkColor: "#5BD48F", meta: "3 files · +142", kind: "done" },
+  { n: 2, pr: 413, title: "Wire limiter into request middleware", summary: "Express middleware keyed by client IP, a rateLimit config block and an integration test.", state: "● Your turn · 2 of 4 files", stateColor: "#A9CBFF", checks: "✕ 1 failing", checkColor: "#FF8A80", meta: "3 findings · 1 thread", kind: "current" },
+  { n: 3, pr: 415, title: "Per-tenant limits from config", summary: "Limits looked up per tenant header, falling back to the global default.", state: "! 3 new commits since your review", stateColor: "#F0D27A", checks: "● Running", checkColor: "#E8C65A", meta: "5 files · +88 −21", kind: "stale" },
+  { n: 4, pr: 416, title: "Expose limiter metrics", summary: "Prometheus counters for allowed and limited requests, labelled by tenant.", state: "Not started", stateColor: "#A0A8B3", checks: "✓ Checks pass", checkColor: "#5BD48F", meta: "3 files · +57 −2", kind: "todo" },
+  { n: 5, pr: 418, title: "Docs and Grafana dashboard", summary: "Docs page for operators and a dashboard JSON for the new metrics.", state: "Not started", stateColor: "#A0A8B3", checks: "✓ Checks pass", checkColor: "#5BD48F", meta: "2 files · +210", kind: "todo" }
+];
+var KIND = {
+  done: { ring: "#5BD48F", fill: "#5BD48F", num: "#0D0F12", bg: "#13161B", bd: "#1E232A" },
+  current: { ring: "#7AB0FF", fill: "transparent", num: "#E7E9EC", bg: "#161D28", bd: "#2F4A70" },
+  stale: { ring: "#E8C65A", fill: "transparent", num: "#E7E9EC", bg: "#13161B", bd: "#1E232A" },
+  todo: { ring: "#4A525D", fill: "transparent", num: "#E7E9EC", bg: "#13161B", bd: "#1E232A" }
+};
+var MATRIX = [
+  ["src/limiter/tokenBucket.ts", { 1: [64, 0], 3: [6, 2] }],
+  ["src/limiter/index.ts", { 1: [8, 0] }],
+  ["test/limiter/tokenBucket.test.ts", { 1: [70, 0] }],
+  ["src/config/schema.ts", { 2: [6, 0], 3: [22, 10] }],
+  ["src/middleware/rateLimit.ts", { 2: [20, 0], 3: [18, 9], 4: [12, 1] }],
+  ["src/server.ts", { 2: [3, 1], 4: [5, 1] }],
+  ["test/middleware/rateLimit.test.ts", { 2: [14, 0], 3: [30, 0] }],
+  ["src/config/tenants.ts", { 3: [12, 0] }],
+  ["src/metrics/limiter.ts", { 4: [40, 0] }],
+  ["docs/rate-limiting.md", { 5: [120, 0] }],
+  ["dashboards/limiter.json", { 5: [90, 0] }]
+];
+var MARKS = { "2|src/middleware/rateLimit.ts": { find: "●3" }, "1|src/limiter/tokenBucket.ts": { ci: "▲" } };
+var VIEWED = { "1|src/limiter/tokenBucket.ts": 1, "1|src/limiter/index.ts": 1, "1|test/limiter/tokenBucket.test.ts": 1, "2|src/server.ts": 1, "2|src/config/schema.ts": 1 };
+var PRS = { 1: 412, 2: 413, 3: 415, 4: 416, 5: 418 };
+function heat(t) { return t < 10 ? "#18212E" : t < 30 ? "#1C2B40" : t < 80 ? "#223652" : "#2A4467"; }
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { layer: 2, file: "src/middleware/rateLimit.ts" }; }
+  renderVals() {
+    var self = this, s = this.state;
+    var layers = LAYERS.map(function (l) {
+      var k = KIND[l.kind];
+      return Object.assign({}, l, { ring: k.ring, fill: k.fill, numColor: k.num, bg: k.bg, bd: k.bd, isCurrent: l.kind === "current" });
+    });
+    var rows = MATRIX.map(function (m) {
+      var path = m[0];
+      return {
+        path: path, fg: path === s.file ? "#A9CBFF" : "#C9CED6",
+        cells: [1, 2, 3, 4, 5].map(function (n) {
+          var v = m[1][n];
+          if (!v) return { touched: false };
+          var key = n + "|" + path, mk = MARKS[key] || {}, sel = n === s.layer && path === s.file;
+          return {
+            touched: true, add: v[0], bg: heat(v[0] + v[1]), bd: sel ? "#A9CBFF" : "transparent",
+            find: mk.find || "", ci: mk.ci || "", viewed: VIEWED[key] ? "✓" : "",
+            sr: path + " in layer " + n + ", +" + v[0] + " −" + v[1],
+            pick: function () { self.setState({ layer: n, file: path }); }
+          };
+        })
+      };
+    });
+    var hit = MATRIX.filter(function (m) { return m[0] === s.file; })[0][1][s.layer];
+    return { layers: layers, rows: rows, sel: { path: s.file, layer: s.layer, pr: PRS[s.layer], add: hit[0], del: hit[1] } };
+  }
+}
+</script>
+</body>
+</html>

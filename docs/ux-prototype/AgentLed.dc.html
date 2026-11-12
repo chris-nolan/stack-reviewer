@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concept C · Agent-led walkthrough</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0F12}
+a{color:#7AB0FF}a:hover{color:#A9CBFF}
+</style>
+</helmet>
+<div style="min-height: 900px; display: flex; flex-direction: column; background: #0D0F12; color: #E7E9EC; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid #1E232A; background: #111418">
+  <div style="display: flex; flex-direction: column">
+    <span style="font-weight: 600">Rate limiting · #413</span>
+    <span style="color: #A0A8B3; font-size: 12px">Wire limiter into request middleware</span>
+  </div>
+  <nav aria-label="Stack layers" style="display: flex; gap: 6px; align-items: center">
+    <sc-for list="{{ pills }}" as="p" hint-placeholder-count="5">
+      <span title="{{ p.title }}" style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 14px; border: 1px solid {{ p.bd }}; background: {{ p.bg }}; color: {{ p.fg }}; font-size: 12px; font-weight: 500">{{ p.n }} <span aria-hidden="true">{{ p.glyph }}</span><span style="position: absolute; left: -9999px">{{ p.sr }}</span></span>
+    </sc-for>
+  </nav>
+  <div style="flex: 1 1 auto"></div>
+  <span style="font-size: 12px; padding: 3px 9px; border-radius: 10px; background: #2A1416; color: #FFB4AA">✕ 1 check failing</span>
+  <button type="button" style="padding: 7px 14px; border-radius: 8px; border: 0; background: #7AB0FF; color: #0D0F12; font: inherit; font-weight: 600; cursor: pointer">Review · {{ drafts }} drafts</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; min-height: 0">
+
+  <section aria-label="Conversation with Claude Code" style="flex: 1 1 480px; max-width: 600px; display: flex; flex-direction: column; border-right: 1px solid #1E232A; background: #111418">
+    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid #1E232A">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #5BD48F" aria-hidden="true"></span>
+      <label for="agentC" style="font-weight: 600">Walkthrough with</label>
+      <select id="agentC" style="padding: 4px 6px; border-radius: 6px; border: 1px solid #2A3038; background: #161A20; color: #E7E9EC; font: inherit">
+        <option>Claude Code</option>
+        <option>Gemini CLI</option>
+      </select>
+      <div style="flex: 1 1 auto"></div>
+      <span style="font-size: 12px; color: #A0A8B3">worktree · alex-r/limiter-middleware</span>
+    </div>
+
+    <div style="flex: 1 1 auto; overflow: auto; max-height: 700px; padding: 18px 18px 8px; display: flex; flex-direction: column; gap: 16px; line-height: 1.55">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: #A0A8B3">Claude Code · read 9 files across #412–#413 · ran <code>npm test</code> (you allowed once)</span>
+        <p style="margin: 0; font-size: 14px; color: #E7E9EC">This layer plugs the token bucket from #412 into Express. It's small (4 files, +43 −1), but the middleware will run on every request, so it's worth a careful read. Here's the order I'd go in:</p>
+        <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px">
+          <sc-for list="{{ order }}" as="o" hint-placeholder-count="4">
+            <li>
+              <button type="button" onClick="{{ o.pick }}" style="padding: 0; border: 0; background: transparent; color: {{ o.fg }}; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer">{{ o.path }}</button>
+              <span style="color: #A0A8B3"> {{ o.why }}</span>
+            </li>
+          </sc-for>
+        </ol>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <p style="margin: 0; font-size: 14px">Three things need your judgement:</p>
+        <sc-for list="{{ findings }}" as="f" hint-placeholder-count="3">
+          <article style="padding: 12px 14px; border-radius: 12px; border: 1px solid {{ f.border }}; background: {{ f.cardBg }}; display: flex; flex-direction: column; gap: 8px; opacity: {{ f.opacity }}">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+              <span style="font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: {{ f.sevBg }}; color: {{ f.sevFg }}">{{ f.sev }}</span>
+              <strong style="font-weight: 600">{{ f.title }}</strong>
+            </div>
+            <p style="margin: 0; color: #C9CED6">{{ f.body }}</p>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+              <button type="button" onClick="{{ f.show }}" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Show rateLimit.ts:{{ f.line }}</button>
+              <sc-if value="{{ f.isOpen }}" hint-placeholder-val="{{ true }}">
+                <button type="button" onClick="{{ f.accept }}" style="padding: 5px 10px; border-radius: 6px; border: 0; background: #7AB0FF; color: #0D0F12; font: inherit; font-weight: 600; cursor: pointer">Draft comment</button>
+                <button type="button" onClick="{{ f.dismiss }}" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Not an issue</button>
+              </sc-if>
+              <sc-if value="{{ f.isClosed }}" hint-placeholder-val="{{ false }}">
+                <span style="color: #A0A8B3; font-size: 12px">{{ f.closedLabel }}</span>
+                <button type="button" onClick="{{ f.undo }}" style="padding: 2px 8px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; font-size: 12px; cursor: pointer">Undo</button>
+              </sc-if>
+            </div>
+          </article>
+        </sc-for>
+      </div>
+
+      <article style="padding: 12px 14px; border-radius: 12px; border: 1px solid #4A2623; background: #1A1214; display: flex; flex-direction: column; gap: 8px">
+        <strong>About the red CI run</strong>
+        <p style="margin: 0; color: #C9CED6"><code>test / node 20</code> fails on "returns 429 after capacity". The test is right. The cause is in #412: <code>TokenBucket</code> treats <code>refillPerSec = 0</code> as unlimited (<code>tokenBucket.ts:18</code>). You approved that layer yesterday.</p>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap">
+          <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Open #412 at line 18</button>
+          <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Draft a comment on #412</button>
+          <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Show failing log</button>
+        </div>
+      </article>
+
+      <div style="padding: 10px 12px; border-radius: 10px; border: 1px solid #252A31; background: #14181E; display: flex; gap: 10px; align-items: center">
+        <span style="color: #E8C65A; font-weight: 700" aria-hidden="true">?</span>
+        <span style="flex: 1 1 auto; color: #C9CED6">Claude Code wants to run <code>npm run test -- --coverage</code></span>
+        <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 0; background: #2B3A52; color: #E7E9EC; font: inherit; cursor: pointer">Allow once</button>
+        <button type="button" style="padding: 5px 10px; border-radius: 6px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; cursor: pointer">Deny</button>
+      </div>
+    </div>
+
+    <div style="padding: 12px 16px 14px; border-top: 1px solid #1E232A; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; gap: 6px; flex-wrap: wrap">
+        <button type="button" style="padding: 5px 10px; border-radius: 14px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; font-size: 12px; cursor: pointer">Next layer: #415 (3 new commits)</button>
+        <button type="button" style="padding: 5px 10px; border-radius: 14px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; font-size: 12px; cursor: pointer">Explain TokenBucket</button>
+        <button type="button" style="padding: 5px 10px; border-radius: 14px; border: 1px solid #2A3038; background: transparent; color: #C9CED6; font: inherit; font-size: 12px; cursor: pointer">Draft my review summary</button>
+      </div>
+      <label for="askC" style="position: absolute; left: -9999px">Message Claude Code</label>
+      <textarea id="askC" rows="2" placeholder="Ask, or say “next” to move on…" style="resize: none; padding: 10px 12px; border-radius: 10px; border: 1px solid #2A3038; background: #161A20; color: #E7E9EC; font: inherit"></textarea>
+    </div>
+  </section>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: #13161B">
+    <div role="tablist" aria-label="Files" style="display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid #1E232A">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+        <button type="button" role="tab" aria-selected="{{ t.sel }}" onClick="{{ t.pick }}" style="display: flex; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid {{ t.bd }}; border-bottom: 0; border-radius: 8px 8px 0 0; background: {{ t.bg }}; color: {{ t.fg }}; font-family: 'JetBrains Mono', monospace; font-size: 12px; cursor: pointer">{{ t.name }}<span style="color: {{ t.dotColor }}" aria-hidden="true">{{ t.dot }}</span></button>
+      </sc-for>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid #1E232A">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #C9CED6">{{ file.path }}</span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5BD48F">+{{ file.add }}</span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #FF8A80">−{{ file.del }}</span>
+      <div style="flex: 1 1 auto"></div>
+      <label style="display: flex; gap: 6px; align-items: center; color: #A0A8B3"><input type="checkbox" checked="{{ fileViewed }}" onChange="{{ toggleViewed }}" style="accent-color: #7AB0FF; margin: 0"> Viewed</label>
+    </div>
+    <div style="flex: 1 1 auto; overflow: auto; max-height: 720px; padding: 6px 0 24px">
+      <sc-for list="{{ diff }}" as="ln" hint-placeholder-count="14">
+        <div style="display: flex; background: {{ ln.bg }}; box-shadow: {{ ln.ring }}; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 21px">
+          <span style="flex: 0 0 44px; text-align: right; padding-right: 8px; color: #8A939F">{{ ln.ol }}</span>
+          <span style="flex: 0 0 44px; text-align: right; padding-right: 8px; color: #8A939F">{{ ln.nl }}</span>
+          <span style="flex: 0 0 14px; color: {{ ln.flagColor }}">{{ ln.flag }}</span>
+          <span style="flex: 0 0 16px; color: {{ ln.markColor }}">{{ ln.mark }}</span>
+          <span style="flex: 1 1 auto; white-space: pre; color: {{ ln.fg }}">{{ ln.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var SEV = { High: ["#3A1D1A", "#FFB4AA", "#5A2C27"], Medium: ["#352816", "#F5C77E", "#4E3A1E"], Low: ["#1E2733", "#B9C7D8", "#2E3A4A"] };
+var CODE = {
+  "src/middleware/rateLimit.ts": { add: 20, del: 0, header: "@@ -0,0 +1,20 @@", o: 0, n: 1, rows: [
+    "+import { TokenBucket } from '../limiter/tokenBucket';",
+    "+import type { Request, Response, NextFunction } from 'express';",
+    "+",
+    "+const buckets = new Map<string, TokenBucket>();",
+    "+",
+    "+export function rateLimit(opts: { capacity: number; refillPerSec: number }) {",
+    "+  return (req: Request, res: Response, next: NextFunction) => {",
+    "+    const key = req.ip;",
+    "+    let bucket = buckets.get(key);",
+    "+    if (!bucket) {",
+    "+      bucket = new TokenBucket(opts.capacity, opts.refillPerSec);",
+    "+      buckets.set(key, bucket);",
+    "+    }",
+    "+    if (!bucket.take()) {",
+    "+      res.setHeader('Retry-After', '1');",
+    "+      return res.status(429).json({ error: 'rate_limited' });",
+    "+    }",
+    "+    next();",
+    "+  };",
+    "+}"
+  ] },
+  "src/server.ts": { add: 3, del: 1, header: "@@ -12,5 +12,7 @@ import express from 'express';", o: 12, n: 12, rows: [
+    " import { healthRouter } from './routes/health';",
+    "+import { rateLimit } from './middleware/rateLimit';",
+    " ",
+    " const app = express();",
+    "-app.use(express.json());",
+    "+app.use(express.json({ limit: '1mb' }));",
+    "+app.use(rateLimit(config.rateLimit));",
+    " app.use('/health', healthRouter);"
+  ] },
+  "src/config/schema.ts": { add: 6, del: 0, header: "@@ -30,3 +30,9 @@ export const configSchema = z.object({", o: 30, n: 30, rows: [
+    "   port: z.number().default(8080),",
+    "   logLevel: z.enum(['debug', 'info', 'warn']).default('info'),",
+    "+  rateLimit: z",
+    "+    .object({",
+    "+      capacity: z.number().int().positive().default(100),",
+    "+      refillPerSec: z.number().positive().default(10),",
+    "+    })",
+    "+    .default({}),",
+    " });"
+  ] },
+  "test/middleware/rateLimit.test.ts": { add: 14, del: 0, header: "@@ -0,0 +1,14 @@", o: 0, n: 1, rows: [
+    "+import request from 'supertest';",
+    "+import express from 'express';",
+    "+import { rateLimit } from '../../src/middleware/rateLimit';",
+    "+",
+    "+describe('rateLimit', () => {",
+    "+  it('returns 429 after capacity', async () => {",
+    "+    const app = express();",
+    "+    app.use(rateLimit({ capacity: 2, refillPerSec: 0 }));",
+    "+    app.get('/', (_req, res) => res.send('ok'));",
+    "+    await request(app).get('/').expect(200);",
+    "+    await request(app).get('/').expect(200);",
+    "+    await request(app).get('/').expect(429);",
+    "+  });",
+    "+});"
+  ] }
+};
+var ORDER = [
+  ["src/config/schema.ts", "adds the config the middleware reads. Quick."],
+  ["src/middleware/rateLimit.ts", "the core of the layer. All 3 findings are here."],
+  ["src/server.ts", "mounts it. Check the order relative to express.json()."],
+  ["test/middleware/rateLimit.test.ts", "one happy-path test. This is the one failing in CI."]
+];
+var FINDINGS = [
+  { id: "f1", sev: "High", line: 4, title: "The bucket map never evicts", body: "Each client IP gets a TokenBucket that lives forever. On a public endpoint that's unbounded memory growth. An LRU capped around 10k entries would fix it." },
+  { id: "f2", sev: "Medium", line: 8, title: "req.ip is probably the load balancer", body: "Nothing in this stack calls app.set('trust proxy'), so behind the LB every request shares one bucket. Worth asking alex-r how orders-api is deployed." },
+  { id: "f3", sev: "Low", line: 15, title: "Retry-After is always 1", body: "#412 exposes bucket.msUntilNextToken(), so this header could be accurate for free." }
+];
+var MAIN = "src/middleware/rateLimit.ts";
+function buildDiff(path, decorate) {
+  var c = CODE[path];
+  var o = c.o, n = c.n;
+  var out = [{ ol: "", nl: "", mark: "", flag: "", flagColor: "", text: c.header, bg: "#151B25", fg: "#8FB0D8", markColor: "#8FB0D8", ring: "none" }];
+  c.rows.forEach(function (r) {
+    var t = r.charAt(0), text = r.slice(1), line;
+    if (t === "+") line = { ol: "", nl: n++, mark: "+", bg: "#0F2418", fg: "#D6F5E0", markColor: "#5BD48F" };
+    else if (t === "-") line = { ol: o++, nl: "", mark: "−", bg: "#2A1416", fg: "#F7D4D1", markColor: "#FF8A80" };
+    else line = { ol: o++, nl: n++, mark: "", bg: "transparent", fg: "#C9CED6", markColor: "#8A939F" };
+    line.text = text; line.flag = ""; line.flagColor = "#F5C77E"; line.ring = "none";
+    decorate(path, line);
+    out.push(line);
+  });
+  return out;
+}
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { file: MAIN, focus: 4, viewed: {}, fs: { f1: "open", f2: "open", f3: "open" } };
+  }
+  setFinding(id, v) { var fs = Object.assign({}, this.state.fs); fs[id] = v; this.setState({ fs: fs }); }
+  renderVals() {
+    var self = this, s = this.state;
+    var pills = [
+      { n: "1", glyph: "✓", sr: "approved", title: "#412 approved", bg: "#12291D", fg: "#7FE0AA", bd: "#1F4630" },
+      { n: "2", glyph: "●", sr: "current", title: "#413 reviewing", bg: "#1B2330", fg: "#A9CBFF", bd: "#2F4A70" },
+      { n: "3", glyph: "!", sr: "new commits", title: "#415 new commits", bg: "#2F2914", fg: "#F0D27A", bd: "#4A3F1C" },
+      { n: "4", glyph: "", sr: "not started", title: "#416", bg: "transparent", fg: "#A0A8B3", bd: "#2A3038" },
+      { n: "5", glyph: "", sr: "not started", title: "#418", bg: "transparent", fg: "#A0A8B3", bd: "#2A3038" }
+    ];
+    var findings = FINDINGS.map(function (f) {
+      var st = s.fs[f.id], sv = SEV[f.sev], focused = s.file === MAIN && s.focus === f.line;
+      return Object.assign({}, f, {
+        sevBg: sv[0], sevFg: sv[1], border: focused ? sv[1] : sv[2], cardBg: focused ? "#1C1A17" : "#171819",
+        isOpen: st === "open", isClosed: st !== "open",
+        closedLabel: st === "accepted" ? "Drafted on line " + f.line : "Dismissed",
+        opacity: st === "dismissed" ? "0.55" : "1",
+        show: function () { self.setState({ file: MAIN, focus: f.line }); },
+        accept: function () { self.setFinding(f.id, "accepted"); },
+        dismiss: function () { self.setFinding(f.id, "dismissed"); },
+        undo: function () { self.setFinding(f.id, "open"); }
+      });
+    });
+    var order = ORDER.map(function (o) {
+      return { path: o[0], why: o[1], fg: o[0] === s.file ? "#A9CBFF" : "#C9CED6", pick: function () { self.setState({ file: o[0], focus: null }); } };
+    });
+    var tabs = ORDER.map(function (o) {
+      var p = o[0], sel = p === s.file, parts = p.split("/");
+      return {
+        name: parts[parts.length - 1], sel: sel ? "true" : "false",
+        bg: sel ? "#13161B" : "transparent", bd: sel ? "#252A31" : "transparent", fg: sel ? "#E7E9EC" : "#A0A8B3",
+        dot: s.viewed[p] ? "✓" : (p === MAIN ? "●" : ""), dotColor: s.viewed[p] ? "#7AB0FF" : "#F5C77E",
+        pick: function () { self.setState({ file: p, focus: null }); }
+      };
+    });
+    var diff = buildDiff(s.file, function (p, line) {
+      if (p !== MAIN) return;
+      findings.forEach(function (f) {
+        if (f.line === line.nl) { line.flag = "●"; line.flagColor = f.sevFg; }
+        if (s.focus === line.nl && f.line === line.nl) { line.bg = "#2A2414"; line.ring = "inset 3px 0 0 #F5C77E"; }
+      });
+    });
+    return {
+      pills: pills, findings: findings, order: order, tabs: tabs, diff: diff,
+      file: { path: s.file, add: CODE[s.file].add, del: CODE[s.file].del },
+      fileViewed: !!s.viewed[s.file],
+      toggleViewed: function () { var v = Object.assign({}, s.viewed); v[s.file] = !v[s.file]; self.setState({ viewed: v }); },
+      drafts: findings.filter(function (f) { return s.fs[f.id] === "accepted"; }).length
+    };
+  }
+}
+</script>
+</body>
+</html>
