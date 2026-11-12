@@ -3,7 +3,7 @@
 use crate::auth::find_binary;
 use crate::platform;
 use base64::Engine;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tokio::process::Command;
@@ -129,6 +129,86 @@ pub async fn prepare(
     Ok(Worktree { path: wt.to_string_lossy().to_string(), head: head_sha, base: base_sha })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayerCommits {
+    number: u32,
+    head_sha: String,
+    base_sha: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct Prefetch {
+    /// Layers whose diff can now be read locally (commits and changed blobs present).
+    ready: Vec<u32>,
+    /// Problems that left a layer to the agent's own `git fetch` (not fatal).
+    warnings: Vec<String>,
+}
+
+/// Before a whole-stack agent run: fetch every layer's commits into the managed clone and
+/// materialise the blobs each layer's diff reads, using the app's credentials, so the agent's
+/// `git diff <base> <head>` / `git show` work offline instead of asking to run `git fetch`.
+#[tauri::command]
+pub async fn repo_prefetch(app: AppHandle, token: String, owner: String, repo: String, layers: Vec<LayerCommits>) -> Result<Prefetch, String> {
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    prefetch(&data, &token, &owner, &repo, &layers).await
+}
+
+async fn fetch_into(clone: &Path, token: &str, items: &[&str]) -> Result<String, String> {
+    let mut args = vec!["fetch", "--quiet", "--filter=blob:none", "origin"];
+    args.extend_from_slice(items);
+    git(clone, token, &args).await
+}
+
+pub async fn prefetch(data_dir: &Path, token: &str, owner: &str, repo: &str, layers: &[LayerCommits]) -> Result<Prefetch, String> {
+    let (owner, repo) = (safe(owner)?, safe(repo)?);
+    if layers.is_empty() || layers.len() > 200 {
+        return Err("expected 1-200 layers".into());
+    }
+    for l in layers {
+        if !is_sha(&l.head_sha) || l.base_sha.as_deref().is_some_and(|b| !is_sha(b)) {
+            return Err(format!("invalid commit for #{}", l.number));
+        }
+    }
+    let clone = data_dir.join("repos").join(owner).join(repo).join("clone");
+    if !clone.join(".git").exists() {
+        return Err("No checkout of this repository yet; start the agent first.".into());
+    }
+    let mut warnings = Vec::new();
+    // PR head refs keep each layer reachable (and gc-safe); the SHAs cover bases such as the
+    // trunk commit under layer 1. One fetch for everything; per-item retries only on failure.
+    let refspecs: Vec<String> = layers.iter().map(|l| format!("+refs/pull/{0}/head:refs/sr/pr/{0}", l.number)).collect();
+    let mut shas: Vec<&str> = layers.iter().flat_map(|l| std::iter::once(l.head_sha.as_str()).chain(l.base_sha.as_deref())).collect();
+    shas.sort_unstable();
+    shas.dedup();
+    let all: Vec<&str> = refspecs.iter().map(String::as_str).chain(shas.iter().copied()).collect();
+    if fetch_into(&clone, token, &all).await.is_err() {
+        let refs: Vec<&str> = refspecs.iter().map(String::as_str).collect();
+        if let Err(e) = fetch_into(&clone, token, &refs).await {
+            warnings.push(format!("PR refs: {e}"));
+        }
+        for sha in &shas {
+            if let Err(e) = fetch_into(&clone, token, &[sha]).await {
+                warnings.push(format!("{}: {e}", &sha[..7.min(sha.len())]));
+            }
+        }
+    }
+    // A partial clone fetches the blobs a diff needs lazily, in one batch per diff, through this
+    // process's credentials; --numstat reads both sides of every changed file.
+    let mut ready = Vec::new();
+    for l in layers {
+        let Some(base) = &l.base_sha else {
+            warnings.push(format!("#{}: no base commit known", l.number));
+            continue;
+        };
+        match git(&clone, token, &["diff", "--numstat", base, &l.head_sha]).await {
+            Ok(_) => ready.push(l.number),
+            Err(e) => warnings.push(format!("#{}: {e}", l.number)),
+        }
+    }
+    Ok(Prefetch { ready, warnings })
+}
+
 #[cfg(test)]
 mod tests {
     /// Needs network and GH_TOKEN; run with `GH_TOKEN=$(gh auth token) cargo test -- --ignored`.
@@ -157,6 +237,56 @@ mod tests {
         assert_eq!(moved.path, slot.path);
         let at = super::git(std::path::Path::new(&moved.path), &token, &["rev-parse", "HEAD"]).await.unwrap();
         assert_eq!(at.trim(), base);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn layer(number: u32, head: &str, base: Option<&str>) -> super::LayerCommits {
+        super::LayerCommits { number, head_sha: head.into(), base_sha: base.map(Into::into) }
+    }
+
+    #[tokio::test]
+    async fn prefetch_checks_its_inputs() {
+        let dir = std::env::temp_dir().join(format!("sr-prefetch-{}", std::process::id()));
+        let sha = "a".repeat(40);
+        assert!(super::prefetch(&dir, "t", "o", "r", &[]).await.is_err());
+        assert!(super::prefetch(&dir, "t", "../o", "r", &[layer(1, &sha, None)]).await.is_err());
+        let bad = super::prefetch(&dir, "t", "o", "r", &[layer(1, "HEAD; rm", Some(&sha))]).await.unwrap_err();
+        assert!(bad.contains("invalid commit"), "{bad}");
+        let no_clone = super::prefetch(&dir, "t", "o", "r", &[layer(1, &sha, Some(&sha))]).await.unwrap_err();
+        assert!(no_clone.contains("No checkout"), "{no_clone}");
+    }
+
+    /// Real repo check: a fresh partial clone, then prefetch, then every layer's diff must read with
+    /// lazy fetching turned off (as for an agent without credentials). Needs network:
+    /// GH_TOKEN=$(gh auth token) SR_TEST_REPO=owner/repo SR_TEST_LAYERS="n:head:base,n:head:base" cargo test prefetch_real -- --ignored
+    #[tokio::test]
+    #[ignore]
+    async fn prefetch_real_stack_makes_diffs_local() {
+        let token = std::env::var("GH_TOKEN").expect("GH_TOKEN");
+        let repo = std::env::var("SR_TEST_REPO").expect("SR_TEST_REPO");
+        let (owner, name) = repo.split_once('/').expect("owner/repo");
+        let layers: Vec<_> = std::env::var("SR_TEST_LAYERS").expect("SR_TEST_LAYERS").split(',').map(|s| {
+            let p: Vec<&str> = s.split(':').collect();
+            layer(p[0].parse().unwrap(), p[1], Some(p[2]))
+        }).collect();
+        let dir = std::env::temp_dir().join(format!("sr-prefetch-real-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let first = &layers[0];
+        super::prepare(&dir, &token, owner, name, first.number, &first.head_sha, "main", Some("t")).await.expect("prepare");
+        let report = super::prefetch(&dir, &token, owner, name, &layers).await.expect("prefetch");
+        println!("{report:?}");
+        assert_eq!(report.ready.len(), layers.len(), "{:?}", report.warnings);
+        let clone = dir.join("repos").join(owner).join(name).join("clone");
+        for l in &layers {
+            let out = std::process::Command::new("git")
+                .args(["diff", "--stat", l.base_sha.as_deref().unwrap(), &l.head_sha])
+                .current_dir(&clone)
+                .env("GIT_NO_LAZY_FETCH", "1")
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "#{} diff needs the network: {}", l.number, String::from_utf8_lossy(&out.stderr));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

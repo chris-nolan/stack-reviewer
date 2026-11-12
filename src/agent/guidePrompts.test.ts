@@ -12,6 +12,18 @@ describe("guide prompts", () => {
     expect(p).toMatch(/Size alone is not complexity/);
   });
 
+  it("tells the agent not to fetch layers the app already prefetched", () => {
+    const layers = [{ index: 1, number: 412, title: "Core" }, { index: 2, number: 413, title: "Wire" }];
+    expect(guideStackPrompt(layers, { local: [412, 413] })).toContain("Don't run `git fetch`");
+    const some = guideStackPrompt(layers, { local: [412] });
+    expect(some).toContain("every layer except #413");
+    expect(some).toContain("git fetch origin <head_sha>");
+    const none = guideStackPrompt(layers);
+    expect(none).toContain("fetch it first: `git fetch origin <head_sha>`");
+    expect(none).not.toContain("Don't run");
+    expect(guideRefreshPrompt([layers[1]], [], { local: [413] })).toContain("Don't run `git fetch`");
+  });
+
   it("the refresh prompt lists only stale layers and carries the others' tier, reason and role", () => {
     const p = guideRefreshPrompt([{ index: 3, number: 415, title: "Tenants" }], [{ number: 412, tier: "light", reason: "tiny class", role: "The bucket" }]);
     expect(p).toContain("#415 Tenants");

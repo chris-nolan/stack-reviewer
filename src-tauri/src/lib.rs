@@ -47,6 +47,7 @@ pub fn run() {
             agent::agent_write,
             agent::agent_kill,
             git::worktree_prepare,
+            git::repo_prefetch,
             cache::cache_report,
             cache::cache_cleanup,
             cache::cache_remove_repo,

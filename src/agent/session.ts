@@ -524,14 +524,23 @@ const GUIDE_STACK = `After the last layer, call set_stack_guide once with:
 - \`ranking\`: every guided PR number, hardest first, each exactly once.
 If a tool call returns an error, fix what it names and call again.`;
 
-export function guideStackPrompt(layers: GuideLayerInfo[]): string {
+/** How the agent should get each layer's diff: plain local git where the app prefetched it, `git fetch` otherwise. */
+function diffNote(layers: GuideLayerInfo[], local?: number[]): string {
+  const have = new Set(local ?? []);
+  const missing = layers.filter((l) => !have.has(l.number));
+  if (!missing.length) return "Every layer's commits and changed files are already in this clone, so read diffs with plain `git diff` and `git show`. Don't run `git fetch`.";
+  if (missing.length === layers.length) return "If a commit is missing, fetch it first: `git fetch origin <head_sha>`.";
+  return `Commits and changed files are already in this clone for every layer except ${missing.map((l) => `#${l.number}`).join(", ")}; for those, fetch first if a commit is missing: \`git fetch origin <head_sha>\`. Don't fetch the others.`;
+}
+
+export function guideStackPrompt(layers: GuideLayerInfo[], opts: { local?: number[] } = {}): string {
   const list = layers.map((l) => `layer ${l.index} (#${l.number} ${l.title})`).join(", ");
   return `Guide me through this stack before I review it. Read every open layer from the bottom up: ${list}.
 
-The working directory only has one layer's head checked out, so read each layer's diff from git objects.
+The working directory only has one layer's head checked out, so read each layer's diff from git objects. ${diffNote(layers, opts.local)}
 For each layer, bottom to top:
 1. Call get_review_context with that layer's \`pr\` number: its description, changed files, \`base_sha\` and \`head_sha\`.
-2. Read the layer's own changes with \`git diff <base_sha> <head_sha>\` (fetch first if a commit is missing: \`git fetch origin <head_sha>\`). Use \`git show <head_sha>:<path>\` for surrounding code. Layers below are already in its base.
+2. Read the layer's own changes with \`git diff <base_sha> <head_sha>\`. Use \`git show <head_sha>:<path>\` for surrounding code. Layers below are already in its base.
 3. Call set_layer_guide for that layer right away, so I see progress. You may revise a tier later with another call.
 
 ${GUIDE_FIELDS}
@@ -542,14 +551,14 @@ ${GUIDE_RULES}`;
 }
 
 /** Re-guide only the listed layers (stale, new, or the rest of an interrupted run), re-using the other layers' guides. */
-export function guideRefreshPrompt(layers: GuideLayerInfo[], kept: GuideKeptInfo[], opts: { resume?: boolean } = {}): string {
+export function guideRefreshPrompt(layers: GuideLayerInfo[], kept: GuideKeptInfo[], opts: { resume?: boolean; local?: number[] } = {}): string {
   const list = layers.map((l) => `layer ${l.index} (#${l.number} ${l.title})`).join(", ");
   const others = kept.length
     ? `The other layers already have guides; do not reread them. Their current tier, reason and role, for ranking:\n${kept.map((k) => `- #${k.number}: ${k.tier} · ${k.reason}${k.role ? ` · role: ${k.role}` : ""}`).join("\n")}`
     : "";
   return `${opts.resume ? "Continue the guide for this stack" : "Refresh the guide for this stack"}. ${opts.resume ? "These layers still need a guide" : "These layers are new or have new commits since their guide"}: ${list}. Work bottom to top.
 
-For each, call get_review_context with its \`pr\`, read its changes with \`git diff <base_sha> <head_sha>\` (fetch first if a commit is missing), and call set_layer_guide right away.
+For each, call get_review_context with its \`pr\`, read its changes with \`git diff <base_sha> <head_sha>\`, and call set_layer_guide right away. ${diffNote(layers, opts.local)}
 
 ${GUIDE_FIELDS}
 

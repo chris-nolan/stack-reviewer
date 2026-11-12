@@ -44,5 +44,32 @@ export function useStackAgent(stack: Stack) {
     [source, stack],
   );
 
-  return { ensureRunning, preparing };
+  /**
+   * Fetches these layers' commits and the blobs their diffs read into the stack's clone, with the app's
+   * credentials, so a whole-stack run reads diffs locally instead of asking to run `git fetch`.
+   * Returns the PRs that are ready; never throws (the agent can still fetch for itself).
+   */
+  const prefetch = useCallback(
+    async (layers: Layer[]): Promise<number[]> => {
+      const token = source.gitToken();
+      if (!token || !layers.length) return [];
+      setPreparing(`Fetching ${layers.length} ${layers.length === 1 ? "layer" : "layers"} into the checkout…`);
+      try {
+        const r = await invoke<{ ready: number[]; warnings: string[] }>("repo_prefetch", {
+          token, owner: stack.repo.owner, repo: stack.repo.repo,
+          layers: layers.map((l) => ({ number: l.pr.number, headSha: l.pr.headSha, baseSha: l.pr.baseSha })),
+        });
+        if (r.warnings.length) console.warn("prefetch", r.warnings);
+        return r.ready;
+      } catch (e) {
+        console.warn("prefetch failed", e);
+        return [];
+      } finally {
+        setPreparing(null);
+      }
+    },
+    [source, stack],
+  );
+
+  return { ensureRunning, prefetch, preparing };
 }

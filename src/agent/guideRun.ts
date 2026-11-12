@@ -53,7 +53,7 @@ export function layersFor(stack: Stack, doc: GuideDoc, mode: GuideLaunch["mode"]
 export function useGuideRun(stack: Stack) {
   const source = useSource();
   const { go } = useNav();
-  const { ensureRunning, preparing } = useStackAgent(stack);
+  const { ensureRunning, prefetch, preparing } = useStackAgent(stack);
   const stackId = stackIdOf(stack);
   const doc = useGuide(stackId);
 
@@ -82,11 +82,13 @@ export function useGuideRun(stack: Stack) {
       activeSessions.set(stackId, session);
       try {
         await ensureRunning(session, targets[0]);
+        // Fetch every target layer up front so the agent never has to ask to run `git fetch`.
+        const local = await prefetch(targets);
         const open = stack.layers.filter((l) => l.pr.state === "OPEN");
         const kept = open
           .filter((l) => !pending.includes(l.pr.number) && current.layers[l.pr.number])
           .map((l) => ({ number: l.pr.number, tier: current.layers[l.pr.number].tier, reason: current.layers[l.pr.number].tierReason, role: current.stack?.layerRoles.find((r) => r.pr === l.pr.number)?.role }));
-        const prompt = o.mode === "all" ? guideStackPrompt(targets.map(info)) : guideRefreshPrompt(targets.map(info), kept, { resume: o.mode === "continue" });
+        const prompt = o.mode === "all" ? guideStackPrompt(targets.map(info), { local }) : guideRefreshPrompt(targets.map(info), kept, { resume: o.mode === "continue", local });
         const display = o.mode === "all" ? "Guide me through the stack" : o.mode === "refresh" ? "Refresh the guide" : "Continue the guide";
         await session.send(prompt, display, { guide: true });
         const d = guideStore.get(stackId);
@@ -101,7 +103,7 @@ export function useGuideRun(stack: Stack) {
         activeSessions.delete(stackId);
       }
     },
-    [stack, stackId, source, ensureRunning],
+    [stack, stackId, source, ensureRunning, prefetch],
   );
 
   // ?demo&guide=1 shows a finished guide (with two layers out of date); ?demo&guide=running freezes a run mid-way.
