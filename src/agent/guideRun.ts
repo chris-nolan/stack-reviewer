@@ -11,7 +11,7 @@ import { guideStore, useGuide } from "../lib/guideStore";
 import type { Layer, Stack } from "../lib/model";
 import { local } from "../lib/platform";
 import { reviewBridge } from "./bridge";
-import { getAgentSession, guideRefreshPrompt, guideStackPrompt, type AgentSession } from "./session";
+import { getAgentSession, guideRefreshPrompt, guideStackPrompt, useAgentSnapshot, type AgentSession, type ChatItem } from "./session";
 import { stackIdOf, useStackAgent } from "./useStackAgent";
 
 export type GuideLaunch = {
@@ -22,6 +22,14 @@ export type GuideLaunch = {
   mode: "all" | "refresh" | "continue";
   /** Demo only: apply instantly, or stop after this many layers so a "running" state stays on screen. */
   demo?: { instant?: boolean; holdAfter?: number };
+};
+
+/** A permission request the running guide's agent is waiting on. */
+export type GuidePermission = {
+  agentName: string;
+  title: string;
+  options: { optionId: string; name: string; kind: string }[];
+  answer: (optionId: string | null) => void;
 };
 
 // Sessions with a guide run in flight, so Stop works from any screen.
@@ -124,6 +132,14 @@ export function useGuideRun(stack: Stack) {
     })();
   }, [source, stackId, start, stack]);
 
+  // The run usually happens away from the chat, so surface a question the agent is waiting on.
+  const runSession = doc.run?.status === "running" ? activeSessions.get(stackId) ?? null : null;
+  const snap = useAgentSnapshot(runSession);
+  const asking = [...snap.items].reverse().find((i): i is Extract<ChatItem, { kind: "permission" }> => i.kind === "permission" && !i.chosen);
+  const permission: GuidePermission | null = runSession && asking
+    ? { agentName: runSession.agentName, title: asking.title, options: asking.options, answer: (optionId) => runSession.answerPermission(asking.id, optionId) }
+    : null;
+
   const stop = useCallback(() => {
     const demo = demoRuns.get(stackId);
     if (demo) demo.cancelled = true;
@@ -138,7 +154,7 @@ export function useGuideRun(stack: Stack) {
     go({ name: "review", repo: stack.repo, stackKey: stack.key, layer: open.index });
   }, [stack, go]);
 
-  return { doc, start, stop, viewChat, preparing, stackId };
+  return { doc, start, stop, viewChat, preparing, stackId, permission };
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));

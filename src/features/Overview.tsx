@@ -138,7 +138,7 @@ function OverviewBody({ stack }: { stack: Stack }) {
       </section>
 
       <GuideCard
-        stack={stack} doc={doc} compact={compact} collapsed={collapsed} onCollapse={setCollapsed} preparing={guide.preparing}
+        stack={stack} doc={doc} compact={compact} collapsed={collapsed} onCollapse={setCollapsed} preparing={guide.preparing} permission={guide.permission}
         onLayer={(n) => openReview(stack.layers[n - 1])} onViewChat={guide.viewChat} onStop={guide.stop}
         onContinue={() => void guide.start({ ...lastAgent(), mode: "continue" })}
         onRerun={() => setLaunch("all")} onRefresh={() => setLaunch("refresh")}

@@ -37,6 +37,15 @@ function presetSettings(agentId: string): AgentSetting[] {
 
 const uid = () => crypto.randomUUID();
 
+/** The permission mode a guide run uses when the agent offers it (Claude Code's "Auto"). */
+const GUIDE_MODE = "auto";
+
+/** Values of a select config option, flattening groups. */
+function optionValues(o: object): string[] {
+  const opts = ((o as { options?: unknown }).options ?? []) as ({ value: string } | { options: { value: string }[] })[];
+  return opts.flatMap((x) => ("options" in x ? x.options : [x])).map((x) => String(x.value));
+}
+
 const OWN_PREFIXES = ["mcp__stack-reviewer__", "stack-reviewer__", "stack-reviewer/", "stack-reviewer:"];
 export const isOwnTool = (title: string | null | undefined) => !!title && OWN_PREFIXES.some((p) => title.toLowerCase().startsWith(p));
 
@@ -75,6 +84,8 @@ export class AgentSession {
   /** Set when the reviewer moved to another layer; sent ahead of the next message. */
   private layerNote: string | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** How this agent switches permission mode, and which modes it offers (learned when the session starts). */
+  private modeCtl: { via: "config"; id: string; values: string[] } | { via: "modes"; values: string[] } | null = null;
 
   constructor(readonly agentId: string, readonly agentName: string, readonly stackId: string, readonly viewer: string = "") {
     const saved = durable.get<Saved | null>("chat", this.storageKey, null);
@@ -190,6 +201,9 @@ export class AgentSession {
     const sid = this.sessionId!;
     // Reviews should ask before running commands, whatever the agent's global default is.
     const modeOpt = state.configOptions?.find((o) => o.category === "mode" && o.type === "select");
+    this.modeCtl = modeOpt
+      ? { via: "config", id: modeOpt.id, values: optionValues(modeOpt) }
+      : state.modes ? { via: "modes", values: state.modes.availableModes.map((m) => m.id) } : null;
     try {
       if (modeOpt && String(modeOpt.currentValue) !== "default" && JSON.stringify(modeOpt).includes('"default"')) {
         const r = await conn.setConfigOption(sid, modeOpt.id, "default");
@@ -211,6 +225,42 @@ export class AgentSession {
     }
     knownSettings.set(this.agentId, settings);
     this.set({ settings });
+  }
+
+  /** Switches the session's permission mode, if the agent offers that mode. */
+  private async setPermissionMode(mode: string): Promise<boolean> {
+    const c = this.modeCtl;
+    if (!c || !c.values.includes(mode) || !this.conn || !this.sessionId) return false;
+    if (c.via === "config") await this.conn.setConfigOption(this.sessionId, c.id, mode);
+    else await this.conn.setMode(this.sessionId, mode);
+    return true;
+  }
+
+  /**
+   * A guide usually runs while the reviewer is on the overview, away from the chat, so a permission
+   * prompt there would stall it unseen. Agents with an auto mode (Claude Code's "Auto": the agent
+   * decides what is safe to run) use it for the guide only; others keep asking.
+   */
+  private async enterGuideMode(): Promise<boolean> {
+    try {
+      if (!(await this.setPermissionMode(GUIDE_MODE))) return false;
+      this.notice(`The guide runs in ${this.agentName}'s Auto mode, so it decides which commands to run without asking. The chat asks first again when the guide finishes.`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async leaveGuideMode() {
+    try {
+      if (await this.setPermissionMode("default")) return;
+    } catch {
+      /* handled below */
+    }
+    if (!this.conn) return; // stopped meanwhile: the next start puts it in ask-first mode anyway
+    // Never leave the chat running without asking: restart it, which applies ask-first mode.
+    this.notice(`Couldn't switch ${this.agentName} back to asking first, so it was stopped. It restarts in ask-first mode with your next message.`, "error");
+    await this.stop();
   }
 
   private async apply(setting: AgentSetting, value: string): Promise<AgentSetting[] | null> {
@@ -303,6 +353,7 @@ export class AgentSession {
     }
     this.push({ kind: "user", id: uid(), text: display });
     this.set({ status: "busy" });
+    const auto = opts.guide ? await this.enterGuideMode() : false;
     const firstNew = this.snap.items.length;
     try {
       const res = await this.conn.prompt(this.sessionId, this.usesMcp ? text : `${text}\n\n${opts.guide ? FALLBACK_GUIDE_FORMAT : FALLBACK_FORMAT}`);
@@ -312,6 +363,7 @@ export class AgentSession {
     } catch (e) {
       this.notice(e instanceof Error ? e.message : String(e), "error");
     } finally {
+      if (auto) await this.leaveGuideMode();
       if (this.snap.status === "busy") this.set({ status: "ready" });
     }
   }

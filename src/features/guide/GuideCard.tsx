@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { GuidePermission } from "../../agent/guideRun";
 import { guideTargets, TIER_WORD, type GuideDoc } from "../../lib/guide";
 import type { Stack } from "../../lib/model";
 import { timeAgo } from "../../ui/bits";
@@ -18,6 +19,8 @@ type Props = {
   onRerun: () => void;
   onRefresh: () => void;
   preparing: string | null;
+  /** A question the running guide's agent is waiting on, shown here because the chat is usually hidden. */
+  permission?: GuidePermission | null;
 };
 
 const head: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, color: "var(--agent)", fontWeight: 600, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase" };
@@ -103,7 +106,21 @@ export function GuideCard(p: Props) {
   );
 }
 
-function RunningCard({ stack, doc, onViewChat, onStop, preparing }: Props) {
+function PermissionAsk({ p }: { p: GuidePermission }) {
+  return (
+    <div role="alert" style={{ padding: 10, borderRadius: 10, border: "1px solid #3a3328", background: "#18160f", display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={{ color: "var(--warn-fg)" }}>{p.agentName} is waiting for your permission to continue the guide</span>
+      <code style={{ fontSize: 12, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{p.title}</code>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {p.options.map((o) => (
+          <button key={o.optionId} className={o.kind === "allow_once" ? "btn btn-sm btn-soft" : "btn btn-sm"} style={{ whiteSpace: "normal", textAlign: "left", maxWidth: "100%", lineHeight: 1.35 }} onClick={() => p.answer(o.optionId)}>{o.name}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RunningCard({ stack, doc, onViewChat, onStop, preparing, permission }: Props) {
   const run = doc.run!;
   const done = run.total - run.pending.length;
   const reading = run.reading != null ? stack.layers.find((l) => l.pr.number === run.reading) : undefined;
@@ -123,6 +140,7 @@ function RunningCard({ stack, doc, onViewChat, onStop, preparing }: Props) {
           <span key={i} style={{ flex: "1 1 0", height: 6, borderRadius: 3, background: i < done ? "var(--agent)" : i === done && !finishing ? "var(--agent-bd)" : "var(--border-strong)", opacity: i < done ? 1 : 0.9 }} />
         ))}
       </div>
+      {permission && <PermissionAsk p={permission} />}
       <span className="muted" style={{ lineHeight: 1.5 }}>
         {preparing ?? (reading ? <>Reading <span className="mono">#{reading.pr.number}</span> {reading.pr.title}. </> : finishing ? "Ranking the layers against each other. " : "Starting. ")}
         The stack summary, plan and ranking appear after the last layer. Layers fill in below as they're done; you can start reviewing at any time.

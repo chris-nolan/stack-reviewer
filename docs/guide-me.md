@@ -17,6 +17,7 @@ The guide orients; it does not judge. It never records findings (the existing "R
 | Question | Decision |
 | --- | --- |
 | Where it runs | In the stack's existing whole-stack agent chat. Follow-ups ("why is #412 heaviest?") have the full context. The chat is busy while the guide runs. |
+| Permissions | The reviewer watches a guide from the overview, where the chat isn't visible. If the agent offers an auto permission mode (Claude Code's "Auto": the agent decides what is safe to run), the guide's turn uses it, then the chat goes back to asking first. A note in the chat says so. Agents without one (Gemini CLI offers only Default, Auto Edit, YOLO and Plan) keep asking. Any request a run is waiting on shows in the running guide card with the same answer buttons as the chat. |
 | Complexity | Tier (Light / Moderate / Heavy) + rank within the stack (hardest first) + one-line reason. The app shows its own size stats (files, +/−) beside it. |
 | Findings | None. Guide only. |
 | Per-layer guide | Focus areas anchored to lines, files that are safe to skim, questions for the author. No reading order. |
