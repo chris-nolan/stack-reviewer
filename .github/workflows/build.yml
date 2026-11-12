@@ -7,7 +7,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: build-${{ github.ref }}
+  # Release commits skip the build (see below), so give them their own group: otherwise their
+  # empty run would cancel a real build still running on the branch.
+  group: "${{ startsWith(github.event.head_commit.message, 'chore: release v') && format('build-skip-{0}', github.sha) || format('build-{0}', github.ref) }}"
   cancel-in-progress: true
 
 jobs:
