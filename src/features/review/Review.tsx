@@ -181,7 +181,10 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     if (!current) return;
     if (mode === "layer" && !current.viewed) setViewed.mutate({ path: current.path, viewed: true });
     const after = navFiles.slice(navIdx + 1);
-    const target = after.find((f) => !viewedByPath.get(f.path)) ?? after[0];
+    // With a filter on, running out of matching files isn't the end of the layer: carry on to the
+    // next unviewed file anywhere (the filter never hides the current file, so it stays visible).
+    const target = after.find((f) => !viewedByPath.get(f.path)) ?? after[0]
+      ?? (filtered ? ordered.find((f) => f !== current && !viewedByPath.get(f.path)) : undefined);
     if (target) selectFile(target.path);
     else setFinishOpen(true);
   };
