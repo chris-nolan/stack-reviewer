@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { PaletteButton } from "../app/Palette";
+import { useCommands } from "../app/commands";
 import { useQueries } from "@tanstack/react-query";
 import { useNav } from "../app/nav";
 import { pinId, pinStore, usePinnedStacks } from "../lib/homeStore";
@@ -15,6 +17,15 @@ import { CHECK_STYLE, ChecksLabel, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing
 export function Overview({ repo, stackKey }: { repo: RepoRef; stackKey: string }) {
   const { up } = useNav();
   const stack = useStack(repo, stackKey);
+  const { go } = useNav();
+  useCommands((stack.data?.layers ?? []).map((l) => ({
+    id: `layer:${l.index}`,
+    group: "Layers" as const,
+    title: `Layer ${l.index}: ${l.pr.title}`,
+    hint: `#${l.pr.number}`,
+    keywords: `${l.pr.number}`,
+    run: () => go({ name: "review", repo, stackKey, layer: l.index }),
+  })));
 
   return (
     <div className="app">
@@ -23,6 +34,7 @@ export function Overview({ repo, stackKey }: { repo: RepoRef; stackKey: string }
         <nav aria-label="Breadcrumb" className="crumbs"><span>{repoKey(repo)}</span><span aria-hidden="true">›</span><span className="here">{stack.data?.title ?? "Stack"}</span></nav>
         <div className="spacer" />
         {stack.isFetching && <span className="spinner" aria-label="Refreshing" />}
+        <PaletteButton />
       </header>
       <div style={{ flex: "1 1 auto", minHeight: 0 }}>
         {stack.isPending ? <div className="empty"><Spinner label="Loading stack…" /></div>

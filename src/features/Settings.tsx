@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { PaletteButton } from "../app/Palette";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "../app/session";
 import { useNav } from "../app/nav";
@@ -219,6 +220,8 @@ export function Settings() {
       <header className="topbar" style={{ padding: "12px 28px", gap: 12 }}>
         <button className="btn btn-sm" onClick={() => up({ name: "home", section: "review" })}><ChevronLeft /> Inbox</button>
         <strong>Settings</strong>
+        <div style={{ flex: 1 }} />
+        <PaletteButton />
       </header>
       <div style={{ maxWidth: 720, padding: "24px 28px" }}>
         <General />

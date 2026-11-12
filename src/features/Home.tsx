@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PaletteButton } from "../app/Palette";
 import { useQueries } from "@tanstack/react-query";
 import { useSession, useSource } from "../app/session";
 import { useNav, type HomeSection, type RecentStack } from "../app/nav";
@@ -122,6 +123,7 @@ export function Home() {
           </label>
           <span className="muted">{inbox.isFetching ? "Syncing…" : inbox.dataUpdatedAt ? `Synced ${timeAgo(new Date(inbox.dataUpdatedAt).toISOString())}` : ""}</span>
           <button className="btn btn-sm" onClick={() => inbox.refetch()}>Refresh</button>
+          <PaletteButton />
         </header>
         <div className="scroll" style={{ flex: "1 1 auto" }}>
           <div style={{ padding: "24px 28px 40px", display: "flex", flexDirection: "column", gap: 18, maxWidth: 1120 }}>

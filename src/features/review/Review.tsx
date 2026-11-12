@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { rememberRecent, useNav } from "../../app/nav";
+import { useCommands, type Command } from "../../app/commands";
+import { PaletteButton } from "../../app/Palette";
+import { applyFileFilters, extensionChips, filterCounts, NO_FILTER, type FileFilter, type FileFilters } from "../../lib/fileFilters";
 import { useChecks, useConversation, useFiles, useSetViewed, useStack, useThreads } from "../../app/queries";
 import { useSession, useSource } from "../../app/session";
 import { AgentDock, type AgentRequest } from "../../agent/AgentDock";
@@ -88,6 +91,8 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   // Where shift+c / shift-click ranges start: the last line plainly clicked or commented on.
   const [anchorLine, setAnchorLine] = useState<number | null>(null);
 
+  const [filters, setFilters] = useState<FileFilters>(() => local.get("fileFilters", NO_FILTER));
+  useEffect(() => local.set("fileFilters", filters), [filters]);
   useEffect(() => local.set("layout", layout), [layout]);
   useEffect(() => local.set("railOpen", railPref), [railPref]);
   useEffect(() => local.set("dockOpen", dockOpen), [dockOpen]);
@@ -142,6 +147,24 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   useEffect(() => local.set("marginPinned", marginPinned), [marginPinned]);
   const showMargin = notesHere > 0 || marginPinned || composer != null;
   const failingChecks = (checksQ.data ?? []).filter((c) => checkRunState(c) === "fail");
+  // Sidebar filters. They shape the list and j/k order, but the current file always stays in it.
+  const facts = useMemo(() => ordered.map((f) => ({
+    path: f.path,
+    viewed: viewedByPath.get(f.path) ?? false,
+    openFindings: review.findings.filter((x) => x.path === f.path && x.status === "open").length,
+    openThreads: (threadsQ.data ?? []).filter((t) => t.path === f.path && !t.isResolved).length,
+    drafts: review.drafts.filter((d) => d.path === f.path).length,
+  })), [ordered, viewedByPath, review.findings, review.drafts, threadsQ.data]);
+  const counts = useMemo(() => filterCounts(facts), [facts]);
+  const extChips = useMemo(() => extensionChips(ordered), [ordered]);
+  const navFiles = useMemo(() => {
+    const keep = new Set(applyFileFilters(facts, filters, current?.path).map((x) => x.path));
+    return ordered.filter((f) => keep.has(f.path));
+  }, [facts, filters, current?.path, ordered]);
+  const navIdx = current ? navFiles.indexOf(current) : -1;
+  const setKind = (kind: FileFilter) => setFilters((f) => ({ ...f, kind }));
+  const setExt = (ext: string | null) => setFilters((f) => ({ ...f, ext: f.ext === ext ? null : ext }));
+  const filtered = filters.kind !== "all" || (filters.ext != null && extChips.length > 0);
   const prev = stack.layers[layer.index - 2] ?? null;
   const next = stack.layers[layer.index] ?? null;
 
@@ -157,7 +180,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const markViewedAndNext = () => {
     if (!current) return;
     if (mode === "layer" && !current.viewed) setViewed.mutate({ path: current.path, viewed: true });
-    const after = ordered.slice(currentIdx + 1);
+    const after = navFiles.slice(navIdx + 1);
     const target = after.find((f) => !viewedByPath.get(f.path)) ?? after[0];
     if (target) selectFile(target.path);
     else setFinishOpen(true);
@@ -177,6 +200,20 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     registerStackBridge(`${repoKey(repo)}#${stack.key}`, source, qc, () => stackRef.current);
   }, [repo, stack.key, source, qc]);
 
+  // Palette commands for this screen.
+  const toggleRail = () => (railOpen ? (setRailOpen(false), setRailForced(false)) : (setRailOpen(true), setRailForced(true)));
+  const commands: Command[] = [
+    { id: "r-agent", group: "Actions", title: dockOpen ? "Hide agent panel" : "Show agent panel", shortcut: "a", keywords: "toggle", run: () => setDockOpen((o) => !o) },
+    { id: "r-findings", group: "Actions", title: "Open findings", hint: review.findings.length ? `${openFindings.length} to triage` : "none yet", keywords: "agent triage", run: () => setFindingsOpen(true) },
+    { id: "r-finish", group: "Actions", title: "Finish layer…", shortcut: "f", keywords: "submit review approve", run: () => setFinishOpen(true) },
+    ...(current && mode === "layer" ? [{ id: "r-viewed", group: "Actions" as const, title: current.viewed ? "Mark file not viewed" : "Mark file viewed", hint: current.path.split("/").pop(), shortcut: "v", run: () => setViewed.mutate({ path: current.path, viewed: !current.viewed }) }] : []),
+    { id: "r-layout", group: "Actions", title: layout === "unified" ? "Switch to split diff" : "Switch to unified diff", keywords: "layout side by side", run: () => setLayout((l) => (l === "unified" ? "split" : "unified")) },
+    { id: "r-rail", group: "Actions", title: railOpen ? "Collapse sidebar" : "Expand sidebar", run: toggleRail },
+    ...stack.layers.map((l): Command => ({ id: `layer:${l.index}`, group: "Layers", title: `Layer ${l.index}: ${l.pr.title}`, hint: `#${l.pr.number}`, keywords: `${l.pr.number}`, current: l === layer, run: () => goLayer(l) })),
+    ...ordered.map((f): Command => ({ id: `file:${f.path}`, group: "Files", title: f.path.split("/").pop() ?? f.path, hint: f.path.split("/").slice(0, -1).join("/"), keywords: f.path, current: f === current, run: () => selectFile(f.path) })),
+  ];
+  useCommands(commands);
+
   // Keyboard shortcuts.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
@@ -185,7 +222,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     if (t.closest("input, textarea, select, [contenteditable=true]")) return;
     const k = e.key;
     if (k === "j") markViewedAndNext();
-    else if (k === "k" && currentIdx > 0) selectFile(ordered[currentIdx - 1].path);
+    else if (k === "k" && navIdx > 0) selectFile(navFiles[navIdx - 1].path);
     else if (k === "v" && current && mode === "layer") setViewed.mutate({ path: current.path, viewed: !current.viewed });
     else if (k === "a") setDockOpen((o) => !o);
     else if (k === "]") goLayer(next);
@@ -246,6 +283,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
         <button className="btn" onClick={() => up({ name: "overview", repo, stackKey: stack.key })}><ChevronLeft /> Overview</button>
         <nav aria-label="Breadcrumb" className="crumbs"><span>{repo.repo}</span><span aria-hidden="true">›</span><span>{stack.title}</span><span aria-hidden="true">›</span><span className="here">#{layer.pr.number}</span></nav>
         <div className="spacer" />
+        <PaletteButton />
         {review.findings.length > 0 && (
           <button className={openFindings.length ? "btn btn-agent" : "btn"} onClick={() => setFindingsOpen(true)} title="All agent findings on this layer">
             Findings · {openFindings.length ? `${openFindings.length} to triage` : review.findings.length}
@@ -299,9 +337,22 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
               <span className="label">Files · reading order</span>
               <span className="muted" style={{ fontSize: 12 }}>{viewedCount}/{layerFiles.length}</span>
             </div>
+            <div role="group" aria-label="Filter files" className="chips-scroll" style={{ padding: "0 10px 6px", flexWrap: "wrap", overflowX: "visible" }}>
+              {([["all", "All"], ["unviewed", "Unviewed"], ["findings", "Findings"], ["comments", "Comments"]] as const).map(([k, label]) => (
+                <button key={k} className="btn btn-chip" aria-pressed={filters.kind === k} onClick={() => setKind(k)} style={{ padding: "2px 8px", borderColor: filters.kind === k ? "var(--accent-soft-bd)" : undefined, background: filters.kind === k ? "var(--accent-soft-bg)" : undefined }}>
+                  {label} {counts[k]}
+                </button>
+              ))}
+              {extChips.map((c) => (
+                <button key={c.ext} className="btn btn-chip mono" aria-pressed={filters.ext === c.ext} onClick={() => setExt(c.ext)} title={`Only .${c.ext} files`} style={{ padding: "2px 8px", borderColor: filters.ext === c.ext ? "var(--accent-soft-bd)" : undefined, background: filters.ext === c.ext ? "var(--accent-soft-bg)" : undefined }}>
+                  .{c.ext} {c.count}
+                </button>
+              ))}
+            </div>
             <div className="scroll" style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", gap: 1, padding: "0 8px 12px" }}>
               {filesQ.isPending && <span style={{ padding: 8 }}><Spinner /></span>}
-              {ordered.map((f) => {
+              {filtered && navFiles.length <= 1 && ordered.length > 1 && <span className="muted" style={{ padding: "4px 8px", fontSize: 12 }}>No other files match this filter.</span>}
+              {navFiles.map((f) => {
                 const sel = f === current;
                 const nOpen = review.findings.filter((x) => x.path === f.path && x.status === "open").length;
                 const nThreads = (threadsQ.data ?? []).filter((t) => t.path === f.path && !t.isResolved).length;
@@ -476,9 +527,9 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
           </section>
 
           <div className="row-nowrap" style={{ gap: 10, margin: "0 16px 14px", padding: "10px 14px", borderRadius: "0 0 12px 12px", border: "1px solid var(--border)", background: "var(--surface-2)" }}>
-            <button className="btn" disabled={currentIdx <= 0} onClick={() => selectFile(ordered[currentIdx - 1].path)}>← Previous <span className="kbd">k</span></button>
+            <button className="btn" disabled={navIdx <= 0} onClick={() => selectFile(navFiles[navIdx - 1].path)}>← Previous <span className="kbd">k</span></button>
             <button className="btn btn-primary" disabled={!current} onClick={markViewedAndNext}>
-              {currentIdx === ordered.length - 1 ? "Mark viewed & finish" : "Mark viewed & next"} <span className="kbd" style={{ background: "rgba(0,0,0,.15)", color: "inherit" }}>j</span>
+              {navIdx === navFiles.length - 1 ? "Mark viewed & finish" : "Mark viewed & next"} <span className="kbd" style={{ background: "rgba(0,0,0,.15)", color: "inherit" }}>j</span>
             </button>
             <div aria-hidden="true" style={{ display: width < 1280 ? "none" : undefined, width: 120, height: 6, borderRadius: 3, background: "#252a31", overflow: "hidden" }}>
               <div style={{ width: `${layerFiles.length ? (viewedCount / layerFiles.length) * 100 : 0}%`, height: 6, background: "var(--accent)" }} />

@@ -1,5 +1,7 @@
 import { NavProvider, useNav } from "./app/nav";
 import { useSession } from "./app/session";
+import { CommandsProvider } from "./app/commands";
+import { Palette } from "./app/Palette";
 import { Notifier } from "./app/Notifier";
 import { SeenRecorder } from "./app/Seen";
 import { Home } from "./features/Home";
@@ -29,9 +31,12 @@ export default function App() {
   if (status === "signed-out") return <SignIn />;
   return (
     <NavProvider>
-      <Notifier />
-      <SeenRecorder />
-      <Routes />
+      <CommandsProvider>
+        <Notifier />
+        <SeenRecorder />
+        <Routes />
+        <Palette />
+      </CommandsProvider>
     </NavProvider>
   );
 }
