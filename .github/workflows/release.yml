@@ -1,0 +1,119 @@
+name: release
+
+# Push a tag like v0.2.0 (matching the version in tauri.conf.json, package.json and Cargo.toml)
+# to build the desktop app for macOS and Windows and publish a GitHub release with the installers.
+# The release stays a draft until every build has uploaded, so a failed build never publishes a
+# half-filled release. Tags with a hyphen (v0.2.0-beta.1) are published as pre-releases.
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Check version and create draft
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag matches the app version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          conf=$(jq -r .version src-tauri/tauri.conf.json)
+          pkg=$(jq -r .version package.json)
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)
+          echo "tag $tag · tauri.conf.json $conf · package.json $pkg · Cargo.toml $cargo"
+          if [ "$tag" != "$conf" ] || [ "$tag" != "$pkg" ] || [ "$tag" != "$cargo" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the app version in all three files"
+            exit 1
+          fi
+
+      - name: Create draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          cat > notes.md <<'EOF'
+          ## Install
+
+          - **macOS** (Apple Silicon and Intel): open the `.dmg` and drag Stack Reviewer to Applications.
+          - **Windows**: run the `-setup.exe` (or the `.msi`).
+
+          These builds are not code-signed yet. On macOS, right-click the app and choose **Open** the
+          first time (or run `xattr -dr com.apple.quarantine "/Applications/Stack Reviewer.app"`). On
+          Windows, SmartScreen may warn: choose **More info → Run anyway**.
+          EOF
+          gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag \
+            --title "Stack Reviewer ${GITHUB_REF_NAME}" --notes-file notes.md --generate-notes
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -1)
+          [ -n "$id" ] || { echo "::error::draft release not found"; exit 1; }
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macOS (universal)
+            os: macos-latest
+            args: --target universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Windows (x64)
+            os: windows-latest
+            args: ""
+            rust_targets: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build and upload installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          tauriScript: bun run tauri
+          args: ${{ matrix.args }}
+
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest="--latest"
+          case "$GITHUB_REF_NAME" in *-*) latest="--latest=false" ;; esac
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false $latest
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json url,assets --jq '"\(.url)\n" + ([.assets[].name] | join("\n"))'

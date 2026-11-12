@@ -78,3 +78,22 @@ bun scripts/agent-settings-probe.ts claude|gemini                           # mo
 bun scripts/agent-e2e.ts                                                    # Claude Code uses the review tools across two layers (two short prompts)
 bun scripts/agent-resume-probe.ts claude|gemini                             # conversation survives a restart via session/load (two tiny prompts)
 ```
+
+## Releasing
+
+Every push and pull request runs `.github/workflows/build.yml` (typecheck, tests and a debug build on macOS and Windows). Releases come from `.github/workflows/release.yml`:
+
+```bash
+bun scripts/bump-version.ts 0.2.0          # sets the version in package.json, tauri.conf.json, Cargo.toml and Cargo.lock
+git commit -am "chore: release v0.2.0"
+git tag v0.2.0
+git push && git push origin v0.2.0
+```
+
+Pushing the tag:
+1. checks that it matches the app version;
+2. creates a draft GitHub release with generated notes;
+3. builds a universal macOS `.dmg`/`.app` and a Windows `.msi` and `-setup.exe`;
+4. publishes the release once every build has uploaded.
+
+A tag with a hyphen (`v0.2.0-beta.1`) is published as a pre-release. Builds aren't code-signed yet, so the release notes explain the macOS Gatekeeper and Windows SmartScreen prompts.
