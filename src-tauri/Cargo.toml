@@ -1,8 +1,10 @@
 [package]
 name = "stack-reviewer"
 version = "0.1.1-beta.4"
-description = "A Tauri App"
-authors = ["you"]
+description = "Desktop app for reviewing stacked GitHub pull requests layer by layer, with a local AI agent alongside"
+authors = ["chris-nolan"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/chris-nolan/stack-reviewer"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

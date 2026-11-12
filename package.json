@@ -1,6 +1,8 @@
 {
   "name": "stack-reviewer",
   "private": true,
+  "license": "GPL-3.0-or-later",
+  "repository": "github:chris-nolan/stack-reviewer",
   "version": "0.1.1-beta.4",
   "type": "module",
   "scripts": {

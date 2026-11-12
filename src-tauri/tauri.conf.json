@@ -32,6 +32,8 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "license": "GPL-3.0-or-later",
+    "copyright": "Copyright © 2026 chris-nolan. Licensed under the GNU GPL v3 or later."
   }
 }

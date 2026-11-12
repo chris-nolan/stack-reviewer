@@ -81,6 +81,12 @@ bun scripts/agent-e2e.ts                                                    # Cl
 bun scripts/agent-resume-probe.ts claude|gemini                             # conversation survives a restart via session/load (two tiny prompts)
 ```
 
+## License
+
+Stack Reviewer is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License](LICENSE) as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the license for details.
+
+The agents it runs (Claude Code, Gemini CLI and the ACP adapter) are separate programs installed by the user, under their own licenses.
+
 ## Releasing
 
 Every push and pull request runs `.github/workflows/build.yml` (typecheck, tests and a debug build on macOS and Windows), except a `chore: release v…` commit, which the tag's release build covers. Releases come from `.github/workflows/release.yml`:
