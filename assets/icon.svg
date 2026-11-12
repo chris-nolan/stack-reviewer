@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Stack Reviewer app icon: a stack of layers (the PRs) with the agent's spark. Regenerate the
+       bundle icons with: bun run tauri icon assets/icon.svg -->
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="#13161b"/>
+  <rect x="232" y="340" width="480" height="104" rx="30" fill="#232a33"/>
+  <rect x="232" y="480" width="480" height="104" rx="30" fill="#232a33"/>
+  <rect x="232" y="620" width="480" height="104" rx="30" fill="#232a33"/>
+  <rect x="258" y="366" width="52" height="52" rx="14" fill="#7ab0ff"/>
+  <rect x="258" y="506" width="52" height="52" rx="14" fill="#5bd48f"/>
+  <rect x="258" y="646" width="52" height="52" rx="14" fill="#5bd48f"/>
+  <rect x="338" y="378" width="230" height="28" rx="14" fill="#5a6573"/>
+  <rect x="338" y="518" width="300" height="28" rx="14" fill="#5a6573"/>
+  <rect x="338" y="658" width="250" height="28" rx="14" fill="#5a6573"/>
+  <path d="M745,177 Q745,292 860,292 Q745,292 745,407 Q745,292 630,292 Q745,292 745,177 Z" fill="#f5c77e" stroke="#13161b" stroke-width="24" stroke-linejoin="round"/>
+</svg>
