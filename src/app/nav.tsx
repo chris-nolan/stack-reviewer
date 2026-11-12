@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import type { RepoRef } from "../lib/model";
-import { local } from "../lib/platform";
+import { scoped } from "../lib/scope";
 
 export type HomeSection = "review" | "mine" | "repo" | "recent";
 
@@ -49,10 +49,10 @@ const Ctx = createContext<Nav | null>(null);
 export type RecentStack = { repo: RepoRef; stackKey: string; title: string; layer: number; at: string };
 
 export function rememberRecent(entry: RecentStack) {
-  const list = local.get<RecentStack[]>("recent", []).filter(
+  const list = scoped.get<RecentStack[]>("recent", []).filter(
     (r) => !(r.repo.owner === entry.repo.owner && r.repo.repo === entry.repo.repo && r.stackKey === entry.stackKey),
   );
-  local.set("recent", [entry, ...list].slice(0, 20));
+  scoped.set("recent", [entry, ...list].slice(0, 20));
 }
 
 export function NavProvider({ children }: { children: ReactNode }) {

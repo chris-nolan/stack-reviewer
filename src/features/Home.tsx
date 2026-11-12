@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSession } from "../app/session";
+import { useQueries } from "@tanstack/react-query";
+import { useSession, useSource } from "../app/session";
 import { useNav, type HomeSection, type RecentStack } from "../app/nav";
 import { useInbox, useOrgRepos, useRepoStacks } from "../app/queries";
 import { useAgents } from "../agent/useAgents";
 import type { RepoRef, Stack } from "../lib/model";
+import type { Inbox } from "../lib/source";
 import { repoKey } from "../lib/model";
 import { local } from "../lib/platform";
+import { scoped } from "../lib/scope";
+import { pinId, pinStore, seenStore, usePinnedStacks, useSeen, type PinnedStack } from "../lib/homeStore";
+import { diffSince, markAllSeen, needsMyReview, stackId, type Change } from "../lib/sinceLast";
 import { progressLabel } from "../lib/stacks";
 import { AgentDot, ChecksLabel, ErrorBox, LayerStrip, LogoMark, Spinner, timeAgo } from "../ui/bits";
 
@@ -18,15 +23,23 @@ export function Home() {
   const [filter, setFilter] = useState("");
   const inbox = useInbox(singles);
   const agents = useAgents();
-  const [pinned, setPinned] = useState<RepoRef[]>(() => local.get("pinnedRepos", []));
-  const recent = local.get<RecentStack[]>("recent", []);
+  const [pinned, setPinned] = useState<RepoRef[]>(() => scoped.get<RepoRef[]>("pinnedRepos", []));
+  const recent = scoped.get<RecentStack[]>("recent", []);
 
   useEffect(() => local.set("includeSingles", singles), [singles]);
+
+  // First run for this data source/viewer: everything currently in the inbox counts as already seen.
+  useEffect(() => {
+    if (!inbox.data || seenStore.initialised()) return;
+    const all = [...inbox.data.needsReview, ...inbox.data.mine];
+    seenStore.replace(markAllSeen(seenStore.get(), all, new Set(inbox.data.needsReview.map(stackId))));
+    seenStore.setInitialised();
+  }, [inbox.data]);
 
   const togglePin = (r: RepoRef) => {
     const next = pinned.some((p) => repoKey(p) === repoKey(r)) ? pinned.filter((p) => repoKey(p) !== repoKey(r)) : [...pinned, r];
     setPinned(next);
-    local.set("pinnedRepos", next);
+    scoped.set("pinnedRepos", next);
   };
 
   const nav: { id: HomeSection; label: string; count?: number }[] = [
@@ -65,6 +78,7 @@ export function Home() {
             );
           })}
         </nav>
+        <PinnedStacks />
         <div className="label" style={{ padding: "18px 16px 6px" }}>Pinned repos</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 8px" }}>
           {pinned.length === 0 && <p className="muted" style={{ margin: "0 10px", fontSize: 12, lineHeight: 1.5 }}>Pin repos from Browse repos.</p>}
@@ -138,17 +152,9 @@ function InboxList({ section, filter, inbox }: { section: HomeSection; filter: s
   if (inbox.isPending) return <Spinner label={`Finding stacks in ${org}…`} />;
   if (inbox.error) return <ErrorBox error={inbox.error} />;
   const list = (section === "mine" ? inbox.data.mine : inbox.data.needsReview).filter((s) => matches(s, filter));
-  const all = inbox.data.needsReview;
-  const failing = all.filter((s) => s.checks === "fail").length;
-  const stale = all.flatMap((s) => s.layers.filter((l) => l.mine === "stale")).length;
   return (
     <>
-      {section === "review" && (failing > 0 || stale > 0) && (
-        <section aria-label="Attention" style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {failing > 0 && <span className="pill" style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--bad-bd)", background: "var(--bad-bg)", color: "var(--text)" }}><span style={{ color: "var(--bad)" }} aria-hidden="true">✕</span> {failing} {failing === 1 ? "stack has" : "stacks have"} failing checks</span>}
-          {stale > 0 && <span className="pill" style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--warn-bd)", background: "var(--warn-bg)", color: "var(--text)" }}><span style={{ color: "var(--warn)" }} aria-hidden="true">!</span> {stale} {stale === 1 ? "layer has" : "layers have"} new commits since you reviewed</span>}
-        </section>
-      )}
+      {section === "review" && <SinceStrip inbox={inbox.data} />}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>{section === "mine" ? "My stacks" : "Needs your review"}</h1>
         <span className="muted">{list.length} {list.length === 1 ? "stack" : "stacks"} in {org}</span>
@@ -264,6 +270,91 @@ function RecentList({ items }: { items: RecentStack[] }) {
           ))}
         </div>
       )}
+    </>
+  );
+}
+
+function describe(c: Change): { glyph: string; color: string; bd: string; bg: string; text: string } {
+  const n = (c.kind === "new" ? 0 : c.layers.length);
+  const layers = c.kind === "new" ? "" : c.layers.length > 3 ? `${n} layers` : `layer${n === 1 ? "" : "s"} ${c.layers.join(", ")}`;
+  if (c.kind === "new") return { glyph: "●", color: "var(--accent)", bd: "var(--accent-soft-bd)", bg: "var(--accent-soft-bg)", text: `New to review: ${c.stack.title}` };
+  if (c.kind === "commits") return { glyph: "!", color: "var(--warn)", bd: "var(--warn-bd)", bg: "var(--warn-bg)", text: `New commits on ${layers}: ${c.stack.title}` };
+  return { glyph: "✕", color: "var(--bad)", bd: "var(--bad-bd)", bg: "var(--bad-bg)", text: `Checks now failing on ${layers}: ${c.stack.title}` };
+}
+
+function SinceStrip({ inbox }: { inbox: Inbox }) {
+  const { go } = useNav();
+  const seen = useSeen();
+  const all = useMemo(() => {
+    const byId = new Map<string, Stack>();
+    for (const s of [...inbox.needsReview, ...inbox.mine]) byId.set(stackId(s), s);
+    return [...byId.values()];
+  }, [inbox]);
+  const needs = useMemo(() => new Set(inbox.needsReview.map(stackId)), [inbox]);
+  const changes = useMemo(() => diffSince(seen, all, needs), [seen, all, needs]);
+  if (!changes.length) return null;
+  return (
+    <section aria-label="Since you last looked" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span className="label">Since you last looked · {changes.length}</span>
+        <div className="spacer" />
+        <button className="btn btn-sm" onClick={() => seenStore.replace(markAllSeen(seen, all, needs))}>Mark all seen</button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {changes.map((c) => {
+          const d = describe(c);
+          return (
+            <button key={`${c.kind}:${c.id}`} onClick={() => go({ name: "overview", repo: c.stack.repo, stackKey: c.stack.key })} className="pill" style={{ padding: "8px 12px", borderRadius: 10, border: `1px solid ${d.bd}`, background: d.bg, color: "var(--text)", maxWidth: "100%" }}>
+              <span style={{ color: d.color }} aria-hidden="true">{d.glyph}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{d.text}</span>
+              <span className="muted">· {c.stack.repo.repo}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PinnedStacks() {
+  const { go } = useNav();
+  const source = useSource();
+  const pins = usePinnedStacks();
+  const qs = useQueries({
+    queries: pins.map((p) => ({
+      queryKey: ["stack", source.kind, repoKey(p.repo), p.stackKey],
+      queryFn: () => source.stack(p.repo, p.stackKey),
+      refetchInterval: 60_000,
+      retry: false,
+    })),
+  });
+  return (
+    <>
+      <div className="label" style={{ padding: "18px 16px 6px" }}>Pinned</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 8px" }}>
+        {pins.length === 0 && <p className="muted" style={{ margin: "0 10px", fontSize: 12, lineHeight: 1.5 }}>Pin a stack from its overview.</p>}
+        {pins.map((p: PinnedStack, i) => {
+          const q = qs[i];
+          const st = q?.data;
+          const gone = !!q && !q.isPending && !st;
+          const needs = st ? needsMyReview(st) : false;
+          return (
+            <div key={pinId(p)} style={{ display: "flex", alignItems: "center", borderRadius: 8 }}>
+              <button
+                onClick={() => go({ name: "overview", repo: p.repo, stackKey: p.stackKey })}
+                title={gone ? `${repoKey(p.repo)} · no longer open (or unavailable)` : `${repoKey(p.repo)} · ${p.title}`}
+                style={{ flex: "1 1 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", border: 0, borderRadius: 8, background: "transparent", color: gone ? "var(--muted)" : "var(--text-2)", textAlign: "left", fontStyle: gone ? "italic" : undefined }}
+              >
+                <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st?.title ?? p.title}</span>
+                {gone && <span style={{ fontSize: 11 }}>closed</span>}
+                {st?.checks === "fail" && <span style={{ color: "var(--bad)" }} title="Checks failing" aria-label="Checks failing">✕</span>}
+                {needs && <span style={{ color: "var(--accent)" }} title="Needs your review" aria-label="Needs your review">●</span>}
+              </button>
+              <button aria-label={`Unpin ${p.title}`} title="Unpin" onClick={() => pinStore.toggle(p)} style={{ border: 0, background: "transparent", color: "var(--muted)", padding: "4px 8px" }}>×</button>
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }

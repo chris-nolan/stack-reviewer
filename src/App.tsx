@@ -1,6 +1,7 @@
 import { NavProvider, useNav } from "./app/nav";
 import { useSession } from "./app/session";
 import { Notifier } from "./app/Notifier";
+import { SeenRecorder } from "./app/Seen";
 import { Home } from "./features/Home";
 import { Overview } from "./features/Overview";
 import { Review } from "./features/review/Review";
@@ -29,6 +30,7 @@ export default function App() {
   return (
     <NavProvider>
       <Notifier />
+      <SeenRecorder />
       <Routes />
     </NavProvider>
   );

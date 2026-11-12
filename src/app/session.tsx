@@ -4,6 +4,7 @@ import type { DataSource } from "../lib/source";
 import type { Viewer } from "../lib/model";
 import { GitHubSource } from "../lib/github";
 import { FixtureSource } from "../lib/fixtures";
+import { setStoreScope } from "../lib/scope";
 import { clearToken, getToken, local, saveToken } from "../lib/platform";
 
 type Session = {
@@ -33,6 +34,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const activate = useCallback(async (src: DataSource) => {
     const v = await src.viewer();
     const list = await src.orgs();
+    setStoreScope(`${src.label ?? src.kind}:${v.login}`);
     setSource(src);
     setViewer(v);
     setOrgs(list);

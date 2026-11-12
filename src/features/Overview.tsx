@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useNav } from "../app/nav";
+import { pinId, pinStore, usePinnedStacks } from "../lib/homeStore";
 import { useSource } from "../app/session";
 import { useStack } from "../app/queries";
 import type { FileChange, Layer, RepoRef, Stack } from "../lib/model";
@@ -43,6 +44,7 @@ function OverviewBody({ stack }: { stack: Stack }) {
   const del = stack.layers.reduce((n, l) => n + l.pr.deletions, 0);
   const [hover, setHover] = useState<number | null>(null);
   const compact = stack.layers.length > 8;
+  const pinned = usePinnedStacks().some((p) => pinId(p) === pinId({ repo: stack.repo, stackKey: stack.key }));
 
   const filesQ = useQueries({
     queries: stack.layers.map((l) => ({
@@ -71,6 +73,15 @@ function OverviewBody({ stack }: { stack: Stack }) {
             <ChecksLabel state={stack.checks} />
           </div>
         </div>
+        <button
+          className="btn"
+          style={{ padding: "9px 12px" }}
+          aria-pressed={pinned}
+          title={pinned ? "Unpin this stack from Home" : "Pin this stack to Home"}
+          onClick={() => pinStore.toggle({ repo: stack.repo, stackKey: stack.key, title: stack.title })}
+        >
+          {pinned ? "★ Pinned" : "☆ Pin"}
+        </button>
         <button className="btn btn-primary" style={{ padding: "9px 16px" }} onClick={() => openReview(resume)}>
           {isMine ? `Open layer ${resume.index}` : resume.index > 1 ? `Resume review at layer ${resume.index}` : "Start review at layer 1"} →
         </button>
@@ -160,6 +171,26 @@ function heat(t: number) {
 
 function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files: FileChange[][]; onOpen: (l: Layer, file?: string) => void; hover: number | null; onHover: (n: number | null) => void }) {
   const [sel, setSel] = useState<{ layer: number; path: string } | null>(null);
+  const source = useSource();
+  // Open agent findings per layer/file, and unresolved review threads (fetched once the files are in).
+  const findings = useMemo(() => stack.layers.map((l) => {
+    const m = new Map<string, number>();
+    for (const f of reviewStore.get(prKey(stack.repo, l.pr.number)).findings) if (f.status === "open") m.set(f.path, (m.get(f.path) ?? 0) + 1);
+    return m;
+  }), [stack]);
+  const threadsQ = useQueries({
+    queries: stack.layers.map((l) => ({
+      queryKey: ["threads", source.kind, repoKey(stack.repo), l.pr.number],
+      queryFn: () => source.threads(stack.repo, l.pr.number),
+      staleTime: 60_000,
+      retry: false,
+    })),
+  });
+  const threads = threadsQ.map((q) => {
+    const m = new Map<string, number>();
+    for (const t of q.data ?? []) if (!t.isResolved) m.set(t.path, (m.get(t.path) ?? 0) + 1);
+    return m;
+  });
   const rows = useMemo(() => {
     const paths = new Map<string, number>();
     files.forEach((list, i) => list.forEach((f) => !paths.has(f.path) && paths.set(f.path, i)));
@@ -176,7 +207,7 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
     <section aria-label="Files by layer" className="card" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", padding: "10px 14px 6px" }}>
         <span className="label">Where the stack touches the code · {rows.length} files</span>
-        <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · double-click to open</span>
+        <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · <span style={{ color: "var(--warn)" }}>●</span> open agent findings · <span style={{ color: "var(--accent)" }}>◆</span> open review threads · <span style={{ color: "var(--bad)" }}>✕</span> failing checks · double-click to open</span>
       </div>
       <div className="scroll" style={{ flex: "1 1 auto", padding: "0 14px 10px" }} onMouseLeave={() => onHover(null)}>
         <div style={{ minWidth: 260 + cols * (colW + 4), display: "flex", flexDirection: "column" }}>
@@ -190,6 +221,7 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
                 title={`#${l.pr.number} ${l.pr.title}`}
                 style={{ border: 0, padding: "2px 0", borderRadius: 4, background: colBg(l.index) ?? "transparent", color: hover === l.index ? "var(--text)" : "var(--muted)", fontSize: 12, textAlign: "center", fontWeight: hover === l.index ? 600 : 400 }}
               >
+                {l.pr.state === "OPEN" && l.pr.checks === "fail" && <span aria-label="checks failing" title="Checks failing" style={{ display: "block", color: "var(--bad)", fontSize: 10, lineHeight: 1 }}>✕</span>}
                 {dense ? l.index : <><span style={{ display: "block" }}>{l.index}</span><span className="mono" style={{ display: "block", fontSize: 10.5 }}>#{l.pr.number}</span></>}
               </button>
             ))}
@@ -204,17 +236,21 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
                 const f = files[i].find((x) => x.path === path);
                 if (!f) return <span key={l.pr.number} onMouseEnter={() => onHover(l.index)} style={{ height: 24, borderRadius: 5, background: colBg(l.index) }} />;
                 const isSel = sel?.layer === l.index && sel.path === path;
+                const nf = findings[i].get(path) ?? 0;
+                const nt = threads[i].get(path) ?? 0;
                 return (
                   <button
                     key={l.pr.number}
                     onMouseEnter={() => onHover(l.index)}
                     onClick={() => setSel({ layer: l.index, path })}
                     onDoubleClick={() => onOpen(l, path)}
-                    aria-label={`${path} in layer ${l.index}, +${f.additions} −${f.deletions}${f.viewed ? ", viewed" : ""}`}
+                    aria-label={`${path} in layer ${l.index}, +${f.additions} −${f.deletions}${f.viewed ? ", viewed" : ""}${nf ? `, ${nf} open agent ${nf === 1 ? "finding" : "findings"}` : ""}${nt ? `, ${nt} open ${nt === 1 ? "thread" : "threads"}` : ""}`}
                     style={{ height: 24, display: "flex", alignItems: "center", justifyContent: dense ? "center" : "space-between", gap: 4, padding: "0 6px", borderRadius: 5, border: `1px solid ${isSel ? "var(--accent-soft-fg)" : hover === l.index ? "#3a5a86" : "transparent"}`, background: heat(f.additions + f.deletions), color: "#9be5b8", fontFamily: "var(--mono)", fontSize: 11, overflow: "hidden" }}
                   >
                     {!dense && <span>+{f.additions}</span>}
                     {f.viewed && <span style={{ color: "var(--accent)" }}>✓</span>}
+                    {nf > 0 && <span style={{ color: "var(--warn)" }} title={`${nf} open agent findings`}>●{nf > 1 ? nf : ""}</span>}
+                    {nt > 0 && <span style={{ color: "var(--accent)" }} title={`${nt} open threads`}>◆{nt > 1 ? nt : ""}</span>}
                   </button>
                 );
               })}
