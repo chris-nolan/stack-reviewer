@@ -157,3 +157,6 @@ React UI (Vite, TS)  ──Tauri IPC──  Rust core
 
 ## Out of scope for v1
 Merging layers or stacks · creating or restacking stacks · agent pushing commits · multiple accounts / GHES · Graphite/ghstack metadata · Codex and arbitrary ACP agents (planned for v1.1) · signed builds and auto-update.
+
+## Next: Guide me
+An agent-made orientation guide for a stack: a summary of the whole stack, relative complexity per layer, and where to focus in each layer. Spec in [guide-me.md](guide-me.md).
