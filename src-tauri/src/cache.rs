@@ -5,7 +5,7 @@ use crate::auth::find_binary;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 use tokio::process::Command;
 
 const SLOT_MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
@@ -156,7 +156,8 @@ async fn remove_worktree(root: &Path, clone: &Path, wt: &Path) -> Result<u64, St
     Ok(size)
 }
 
-pub async fn cleanup(root: &Path, now: SystemTime) -> CleanupResult {
+/// `busy` are working directories of running agents; those worktrees are always kept.
+pub async fn cleanup(root: &Path, now: SystemTime, busy: &[PathBuf]) -> CleanupResult {
     let mut res = CleanupResult { removed: vec![], freed: 0, errors: vec![] };
     for (owner, opath) in subdirs(root) {
         for (repo, rpath) in subdirs(&opath) {
@@ -166,7 +167,14 @@ pub async fn cleanup(root: &Path, now: SystemTime) -> CleanupResult {
                 .iter()
                 .map(|(n, p)| (n.clone(), std::fs::metadata(p).and_then(|m| m.modified()).unwrap_or(now)))
                 .collect();
-            let stale = select_stale(&entries, now, SLOT_MAX_AGE);
+            let stale: Vec<String> = select_stale(&entries, now, SLOT_MAX_AGE)
+                .into_iter()
+                .filter(|name| {
+                    let p = rpath.join("worktrees").join(name);
+                    let real = p.canonicalize().unwrap_or(p);
+                    !busy.iter().any(|b| b == &real || b.starts_with(&real))
+                })
+                .collect();
             for name in &stale {
                 let path = rpath.join("worktrees").join(name);
                 match remove_worktree(root, &clone, &path).await {
@@ -213,12 +221,13 @@ pub async fn cache_report(app: AppHandle) -> Result<CacheReport, String> {
 }
 
 #[tauri::command]
-pub async fn cache_cleanup(app: AppHandle) -> Result<CleanupResult, String> {
+pub async fn cache_cleanup(app: AppHandle, agents: State<'_, crate::agent::Agents>) -> Result<CleanupResult, String> {
+    let busy = agents.busy_dirs().await;
     let root = repos_root(&app)?;
     if !root.exists() {
         return Ok(CleanupResult { removed: vec![], freed: 0, errors: vec![] });
     }
-    Ok(cleanup(&root, SystemTime::now()).await)
+    Ok(cleanup(&root, SystemTime::now(), &busy).await)
 }
 
 #[tauri::command]
@@ -283,12 +292,16 @@ mod tests {
         }
         std::fs::create_dir_all(repos.join("o/r/clone")).unwrap();
         // Fresh slot is kept; legacy is removed.
-        let r = cleanup(&repos, SystemTime::now()).await;
+        // A running agent's checkout is kept even when it would otherwise be removed.
+        let busy = vec![w.join("5-abcdef0123456").canonicalize().unwrap()];
+        let r = cleanup(&repos, SystemTime::now(), &busy).await;
+        assert!(r.removed.is_empty());
+        let r = cleanup(&repos, SystemTime::now(), &[]).await;
         assert_eq!(r.removed, vec!["o/r/5-abcdef0123456"]);
         assert_eq!(r.freed, 5);
         assert!(w.join("slot-a-claude").exists() && !w.join("5-abcdef0123456").exists());
         // Far in the future the slot is stale too.
-        let r = cleanup(&repos, SystemTime::now() + Duration::from_secs(30 * 86400)).await;
+        let r = cleanup(&repos, SystemTime::now() + Duration::from_secs(30 * 86400), &[]).await;
         assert_eq!(r.removed, vec!["o/r/slot-a-claude"]);
         let rep = report(&repos);
         assert_eq!(rep.repos.len(), 1);

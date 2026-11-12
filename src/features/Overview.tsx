@@ -207,7 +207,7 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
     <section aria-label="Files by layer" className="card" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", padding: "10px 14px 6px" }}>
         <span className="label">Where the stack touches the code · {rows.length} files</span>
-        <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · <span style={{ color: "var(--warn)" }}>●</span> open agent findings · <span style={{ color: "var(--accent)" }}>◆</span> open review threads · <span style={{ color: "var(--bad)" }}>✕</span> failing checks · double-click to open</span>
+        <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · <span style={{ color: "var(--agent)" }}>●</span> open agent findings · <span style={{ color: "var(--accent)" }}>◆</span> open review threads · <span style={{ color: "var(--bad)" }}>✕</span> failing checks · double-click to open</span>
       </div>
       <div className="scroll" style={{ flex: "1 1 auto", padding: "0 14px 10px" }} onMouseLeave={() => onHover(null)}>
         <div style={{ minWidth: 260 + cols * (colW + 4), display: "flex", flexDirection: "column" }}>
@@ -249,7 +249,7 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
                   >
                     {!dense && <span>+{f.additions}</span>}
                     {f.viewed && <span style={{ color: "var(--accent)" }}>✓</span>}
-                    {nf > 0 && <span style={{ color: "var(--warn)" }} title={`${nf} open agent findings`}>●{nf > 1 ? nf : ""}</span>}
+                    {nf > 0 && <span style={{ color: "var(--agent)" }} title={`${nf} open agent findings`}>●{nf > 1 ? nf : ""}</span>}
                     {nt > 0 && <span style={{ color: "var(--accent)" }} title={`${nt} open threads`}>◆{nt > 1 ? nt : ""}</span>}
                   </button>
                 );

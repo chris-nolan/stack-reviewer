@@ -24,6 +24,14 @@ pub struct Agents {
 struct Proc {
     stdin: Arc<Mutex<ChildStdin>>,
     child: Arc<Mutex<Child>>,
+    cwd: PathBuf,
+}
+
+impl Agents {
+    /// Working directories of running agents, so cache cleanup never deletes one in use.
+    pub async fn busy_dirs(&self) -> Vec<PathBuf> {
+        self.procs.lock().await.values().map(|p| p.cwd.canonicalize().unwrap_or_else(|_| p.cwd.clone())).collect()
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -175,7 +183,7 @@ pub async fn agent_spawn(app: AppHandle, state: State<'_, Agents>, agent: String
         }
     });
 
-    state.procs.lock().await.insert(id, Proc { stdin: Arc::new(Mutex::new(stdin)), child });
+    state.procs.lock().await.insert(id, Proc { stdin: Arc::new(Mutex::new(stdin)), child, cwd: PathBuf::from(&cwd) });
     Ok(id)
 }
 
