@@ -6,6 +6,7 @@ export type HomeSection = "review" | "mine" | "repo" | "recent";
 
 export type Route =
   | { name: "home"; section?: HomeSection; repo?: RepoRef }
+  | { name: "settings" }
   | { name: "overview"; repo: RepoRef; stackKey: string }
   | { name: "review"; repo: RepoRef; stackKey: string; layer: number; file?: string; line?: number };
 

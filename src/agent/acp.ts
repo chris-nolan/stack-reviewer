@@ -2,6 +2,7 @@
 // Speaks JSON-RPC 2.0, one message per line. We advertise no fs/terminal capabilities:
 // agents read the worktree themselves and ask permission before running commands.
 
+import { launchFor } from "./config";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   InitializeResponse, LoadSessionResponse, McpServer, NewSessionResponse, PromptResponse, RequestPermissionRequest,
@@ -37,7 +38,7 @@ export class AcpConnection {
   async start(agent: string, cwd: string): Promise<InitializeResponse> {
     // Subscribe before spawning would be ideal, but the event names include the pid. The Rust
     // side only starts reading once spawned, and the agent waits for `initialize` before writing.
-    this.pid = await invoke<number>("agent_spawn", { agent, cwd });
+    this.pid = await invoke<number>("agent_spawn", { agent, cwd, launch: launchFor(agent) ?? null });
     this.unlisten.push(
       await listen<string>(`agent-stdout-${this.pid}`, (e) => this.onLine(e.payload)),
       await listen<string>(`agent-stderr-${this.pid}`, (e) => this.handlers.onStderr?.(e.payload)),

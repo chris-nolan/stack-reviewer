@@ -2,7 +2,7 @@
 //! to the webview as events. The ACP protocol itself is spoken by the frontend.
 
 use crate::auth::find_binary;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -64,7 +64,39 @@ fn agent_path() -> String {
     dirs.join(if cfg!(windows) { ";" } else { ":" })
 }
 
-fn launch_spec(id: &str) -> Result<LaunchSpec, String> {
+/// A command the user entered in Settings: replaces the built-in launch for a known agent,
+/// or defines a custom ACP agent. Only ever built from Settings values by the frontend.
+#[derive(Deserialize, Clone, Debug)]
+pub struct AgentOverride {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+/// Resolves a user-entered command: a path (absolute, `~/`, or containing a separator) must exist; a bare name is looked up on PATH.
+fn resolve_command(command: &str) -> Result<PathBuf, String> {
+    let c = command.trim();
+    if c.is_empty() {
+        return Err("The command is empty".into());
+    }
+    let expanded = match c.strip_prefix("~/") {
+        Some(rest) => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest),
+        None => PathBuf::from(c),
+    };
+    if c.contains('/') || c.contains('\\') || c.starts_with('~') {
+        if expanded.is_file() { Ok(expanded) } else { Err(format!("{} does not exist", expanded.display())) }
+    } else {
+        find_binary(c).ok_or_else(|| format!("`{c}` was not found on PATH"))
+    }
+}
+
+fn launch_spec(id: &str, over: Option<&AgentOverride>) -> Result<LaunchSpec, String> {
+    if let Some(o) = over {
+        return Ok(LaunchSpec { program: resolve_command(&o.command)?, args: o.args.clone() });
+    }
     match id {
         "claude" => {
             find_binary("claude").ok_or("Claude Code is not installed (no `claude` on PATH)")?;
@@ -79,25 +111,37 @@ fn launch_spec(id: &str) -> Result<LaunchSpec, String> {
     }
 }
 
+fn info(id: &str, name: &str, over: Option<&AgentOverride>) -> AgentInfo {
+    match launch_spec(id, over) {
+        Ok(spec) => AgentInfo {
+            id: id.into(),
+            name: name.into(),
+            available: true,
+            detail: format!("{} {}", spec.program.display(), spec.args.join(" ")).trim().to_string(),
+        },
+        Err(e) => AgentInfo { id: id.into(), name: name.into(), available: false, detail: e },
+    }
+}
+
+/// Detects the built-in agents (using any override from Settings) plus the user's custom agents.
 #[tauri::command]
-pub fn agents_detect() -> Vec<AgentInfo> {
-    [("claude", "Claude Code"), ("gemini", "Gemini CLI")]
+pub fn agents_detect(overrides: Option<Vec<AgentOverride>>) -> Vec<AgentInfo> {
+    let overrides = overrides.unwrap_or_default();
+    let find = |id: &str| overrides.iter().find(|o| o.id == id);
+    let mut out: Vec<AgentInfo> = [("claude", "Claude Code"), ("gemini", "Gemini CLI")]
         .into_iter()
-        .map(|(id, name)| match launch_spec(id) {
-            Ok(spec) => AgentInfo {
-                id: id.into(),
-                name: name.into(),
-                available: true,
-                detail: format!("{} {}", spec.program.display(), spec.args.join(" ")),
-            },
-            Err(e) => AgentInfo { id: id.into(), name: name.into(), available: false, detail: e },
-        })
-        .collect()
+        .map(|(id, name)| info(id, name, find(id)))
+        .collect();
+    for o in overrides.iter().filter(|o| o.id != "claude" && o.id != "gemini") {
+        let name = if o.name.trim().is_empty() { o.id.as_str() } else { o.name.as_str() };
+        out.push(info(&o.id, name, Some(o)));
+    }
+    out
 }
 
 #[tauri::command]
-pub async fn agent_spawn(app: AppHandle, state: State<'_, Agents>, agent: String, cwd: String) -> Result<u32, String> {
-    let spec = launch_spec(&agent)?;
+pub async fn agent_spawn(app: AppHandle, state: State<'_, Agents>, agent: String, cwd: String, launch: Option<AgentOverride>) -> Result<u32, String> {
+    let spec = launch_spec(&agent, launch.as_ref())?;
     let mut child = Command::new(&spec.program)
         .args(&spec.args)
         .current_dir(&cwd)
@@ -153,4 +197,28 @@ pub async fn agent_kill(state: State<'_, Agents>, id: u32) -> Result<(), String>
         let _ = p.child.lock().await.kill().await;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn override_replaces_builtin_and_custom_needs_command() {
+        let o = AgentOverride { id: "custom-x".into(), name: "X".into(), command: "/definitely/not/here".into(), args: vec![] };
+        assert!(launch_spec("custom-x", Some(&o)).is_err());
+        assert!(launch_spec("custom-x", None).is_err());
+        let sh = AgentOverride { id: "gemini".into(), name: String::new(), command: "/bin/sh".into(), args: vec!["-c".into(), "true".into()] };
+        let spec = launch_spec("gemini", Some(&sh)).unwrap();
+        assert_eq!(spec.program, PathBuf::from("/bin/sh"));
+        assert_eq!(spec.args, vec!["-c", "true"]);
+    }
+
+    #[test]
+    fn detect_lists_custom_agents() {
+        let o = AgentOverride { id: "custom-x".into(), name: "My agent".into(), command: "/bin/sh".into(), args: vec![] };
+        let list = agents_detect(Some(vec![o]));
+        assert_eq!(list.len(), 3);
+        assert!(list[2].available && list[2].name == "My agent");
+    }
 }

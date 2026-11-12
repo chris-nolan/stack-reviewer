@@ -1,5 +1,6 @@
 mod agent;
 mod auth;
+mod cache;
 mod git;
 mod mcp;
 
@@ -43,6 +44,9 @@ pub fn run() {
             agent::agent_write,
             agent::agent_kill,
             git::worktree_prepare,
+            cache::cache_report,
+            cache::cache_cleanup,
+            cache::cache_remove_repo,
             mcp::mcp_url,
             mcp::mcp_respond,
             http_get_text,

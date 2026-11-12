@@ -91,6 +91,7 @@ export function Home() {
               <span aria-hidden="true" style={{ width: 26, height: 26, borderRadius: "50%", background: "#2b3a52", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600 }}>{viewer?.login.slice(0, 2).toUpperCase()}</span>
             )}
             <span style={{ flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis" }}>{viewer?.login}</span>
+            <button className="btn btn-sm btn-icon" aria-label="Settings" title="Settings" onClick={() => go({ name: "settings" })}>⚙</button>
             <button className="btn btn-sm" onClick={signOut}>Sign out</button>
           </div>
         </div>

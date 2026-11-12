@@ -4,6 +4,7 @@ import { Notifier } from "./app/Notifier";
 import { Home } from "./features/Home";
 import { Overview } from "./features/Overview";
 import { Review } from "./features/review/Review";
+import { Settings } from "./features/Settings";
 import { SignIn } from "./features/SignIn";
 import { Spinner } from "./ui/bits";
 
@@ -12,6 +13,8 @@ function Routes() {
   switch (route.name) {
     case "home":
       return <Home />;
+    case "settings":
+      return <Settings />;
     case "overview":
       return <Overview repo={route.repo} stackKey={route.stackKey} />;
     case "review":
