@@ -83,7 +83,7 @@ bun scripts/agent-resume-probe.ts claude|gemini                             # co
 
 ## Releasing
 
-Every push and pull request runs `.github/workflows/build.yml` (typecheck, tests and a debug build on macOS and Windows). Releases come from `.github/workflows/release.yml`:
+Every push and pull request runs `.github/workflows/build.yml` (typecheck, tests and a debug build on macOS and Windows), except a `chore: release v…` commit, which the tag's release build covers. Releases come from `.github/workflows/release.yml`:
 
 ```bash
 bun scripts/bump-version.ts 0.2.0          # sets the version in package.json, tauri.conf.json, Cargo.toml and Cargo.lock

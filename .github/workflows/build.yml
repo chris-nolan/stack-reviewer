@@ -13,6 +13,9 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.name }}
+    # A release commit only bumps the version, and its tag's release workflow builds the same code,
+    # so don't build it twice. (head_commit is unset for pull requests, so they always build.)
+    if: "!startsWith(github.event.head_commit.message, 'chore: release v')"
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
