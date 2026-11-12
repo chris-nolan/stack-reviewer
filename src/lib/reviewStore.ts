@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 import type { DraftComment, Finding } from "./model";
 import { durable } from "./durable";
 
-type PrState = { drafts: DraftComment[]; findings: Finding[]; brief?: { summary: string; readingOrder: string[]; agent: string }; summary?: string };
+type PrState = { drafts: DraftComment[]; findings: Finding[]; brief?: { summary: string; readingOrder: string[]; agent: string }; summary?: string; /** Focus-area ids the reviewer ticked ("guide me"); kept across guide refreshes. */ focusDone?: string[] };
 type All = Record<string, PrState>;
 
 // One durable row per PR (namespace "review", key "owner/repo#n").
@@ -76,6 +76,14 @@ export const reviewStore = {
   },
   setSummary(key: string, summary: string) {
     update(key, (s) => ({ ...s, summary }));
+  },
+  /** Tick or untick a guide focus area. Ids are hashes of path + title, so they survive a guide refresh. */
+  setFocusDone(key: string, id: string, done: boolean) {
+    update(key, (s) => {
+      const cur = s.focusDone ?? [];
+      const next = done ? (cur.includes(id) ? cur : [...cur, id]) : cur.filter((x) => x !== id);
+      return { ...s, focusDone: next };
+    });
   },
   clearFindings(key: string) {
     update(key, (s) => ({ ...s, findings: [] }));

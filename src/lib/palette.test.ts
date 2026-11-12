@@ -36,7 +36,7 @@ describe("file filters", () => {
   const files = [f("a.ts", { viewed: true }), f("b.ts", { openFindings: 2 }), f("c.md", { openThreads: 1 }), f("d.ts", { drafts: 1 }), f("Makefile")];
   const paths = (x: FileFacts[]) => x.map((y) => y.path);
   it("counts", () => {
-    expect(filterCounts(files)).toEqual({ all: 5, unviewed: 4, findings: 1, comments: 2 });
+    expect(filterCounts(files)).toEqual({ all: 5, unviewed: 4, findings: 1, comments: 2, focus: 0 });
   });
   it("filters by kind", () => {
     expect(paths(applyFileFilters(files, { kind: "unviewed", ext: null }))).toEqual(["b.ts", "c.md", "d.ts", "Makefile"]);

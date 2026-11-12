@@ -19,7 +19,7 @@ function pr(n: number, title: string, base: string, head: string, extra: Partial
   };
 }
 
-const PRS: PullRequest[] = [
+const PRS_BASE: PullRequest[] = [
   pr(412, "feat(limiter): add token bucket limiter core", "main", "alex-r/limiter-core", {
     body: "Adds a `TokenBucket` class with capacity and refill rate, plus unit tests. No callers yet.",
     additions: 142, changedFiles: 3, requestedReviewers: [], latestReviews: [{ author: ME, state: "APPROVED", commit: "sha412b" }],
@@ -44,6 +44,18 @@ const PRS: PullRequest[] = [
   pr(403, "Token rotation: alert on failure", "you/token-rotation", "you/token-alerts", { author: ME, requestedReviewers: ["priya-k"], additions: 30, changedFiles: 2, updatedAt: ago(3) }),
 ];
 
+
+const PRS: PullRequest[] = PRS_BASE;
+
+/** Builds a hunk header from lines prefixed " ", "+" or "-". */
+function mkPatch(oldStart: number, newStart: number, lines: string[]): string {
+  const oldN = lines.filter((l) => l[0] !== "+").length;
+  const newN = lines.filter((l) => l[0] !== "-").length;
+  return `@@ -${oldStart},${oldN} +${newStart},${newN} @@\n${lines.join("\n")}`;
+}
+const added = (path: string, lines: string[], viewed = false): FileChange => ({
+  path, status: "added", additions: lines.length, deletions: 0, viewed, patch: mkPatch(0, 1, lines.map((l) => `+${l}`)).replace(/^@@ -0,0 /, "@@ -0,0 "),
+});
 const FILES: Record<number, FileChange[]> = {
   413: [
     { path: "src/config/schema.ts", status: "modified", additions: 6, deletions: 0, viewed: true,
@@ -61,6 +73,22 @@ const FILES: Record<number, FileChange[]> = {
     { path: "src/limiter/index.ts", status: "added", additions: 1, deletions: 0, viewed: true, patch: "@@ -0,0 +1 @@\n+export { TokenBucket } from './tokenBucket';" },
   ],
 };
+
+Object.assign(FILES, {
+  415: [
+    { path: "src/config/tenants.ts", status: "added", additions: 4, deletions: 0, viewed: false, patch: "@@ -0,0 +1,4 @@\n+export const tenantLimits: Record<string, number> = {\n+  'strategy-team': 500,\n+  default: 100,\n+};" },
+    { path: "src/middleware/rateLimit.ts", status: "modified", additions: 4, deletions: 2, viewed: false,
+      patch: mkPatch(6, 6, [" export function rateLimit(opts: { capacity: number; refillPerSec: number }) {", "   return (req: Request, res: Response, next: NextFunction) => {", "-    const key = req.ip;", "+    const tenant = req.header('x-tenant') ?? 'default';", "+    const limit = tenantLimits[tenant] ?? tenantLimits.default;", "+    const key = `${tenant}:${req.ip}`;", "     let bucket = buckets.get(key);", "     if (!bucket) {", "-      bucket = new TokenBucket(opts.capacity, opts.refillPerSec);", "+      bucket = new TokenBucket(limit, opts.refillPerSec);", "       buckets.set(key, bucket);"]) },
+  ],
+  416: [
+    added("src/metrics/limiter.ts", ["import { counter } from './registry';", "", "export const limited = counter('limiter_rejected_total', ['tenant']);", "", "export function recordRejected(tenant: string) {", "  limited.inc({ tenant });", "}"]),
+    { path: "src/middleware/rateLimit.ts", status: "modified", additions: 2, deletions: 0, viewed: false, patch: mkPatch(14, 14, ["     if (!bucket.take()) {", "+      recordRejected(tenant);", "       res.setHeader('Retry-After', '1');", "       return res.status(429).json({ error: 'rate_limited' });"]) },
+  ],
+  418: [
+    added("docs/rate-limiting.md", ["# Rate limiting", "", "Requests are limited per tenant with a token bucket.", "", "- Default capacity: 100 requests", "- Refill: 10 requests per second", "- Over the limit: HTTP 429 with `Retry-After: 1`"]),
+    added("grafana/limiter.json", ['{', '  "title": "Limiter",', '  "panels": [{ "type": "timeseries", "title": "Rejected / s" }]', '}']),
+  ],
+});
 
 const THREADS: Record<number, ReviewThread[]> = {
   413: [{

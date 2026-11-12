@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSource } from "../app/session";
 import type { Layer, RepoRef, Stack } from "../lib/model";
 import { repoKey } from "../lib/model";
-import { invoke, isTauri, local } from "../lib/platform";
+import { isTauri, local } from "../lib/platform";
 import { AgentDot } from "../ui/bits";
 import { Markdown } from "../ui/Markdown";
 import { homeDir } from "@tauri-apps/api/path";
 import { checkFailurePrompt, getAgentSession, reviewLayerPrompt, reviewStackPrompt, useAgentSnapshot, type AgentSession, type ChatItem } from "./session";
 import type { AgentSetting } from "./settings";
 import { useAgents } from "./useAgents";
+import { useStackAgent } from "./useStackAgent";
 
 export type AgentRequest = { id: number; text: string; display: string };
 
@@ -25,10 +25,7 @@ type Props = {
   onRequestHandled?: (id: number) => void;
 };
 
-type Worktree = { path: string; head: string; base: string };
-
 export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNextFinding, onClose, request, onRequestHandled }: Props) {
-  const source = useSource();
   const agents = useAgents();
   const available = agents.data?.filter((a) => a.available) ?? [];
   const [agentId, setAgentId] = useState<string>(() => local.get("agent", "claude"));
@@ -37,7 +34,6 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
   const session = useMemo(() => (agent ? getAgentSession(stackId, agent.id, agent.name) : null), [stackId, agent]);
   const snap = useAgentSnapshot(session);
   const [input, setInput] = useState("");
-  const [preparing, setPreparing] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => local.set("agent", agentId), [agentId]);
@@ -48,32 +44,12 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
   }, [session]);
   useEffect(() => endRef.current?.scrollIntoView({ block: "end" }), [snap.items.length, snap.items.at(-1)]);
 
-  // One checkout per stack (and agent) that moves to whichever layer the conversation is on.
-  const slot = `${stack.key}-${agent?.id ?? "agent"}`.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64);
+  const { ensureRunning: ensure, preparing } = useStackAgent(stack);
   const agentLayer = snap.layer;
   const elsewhere = !!agentLayer && (agentLayer.pr !== layer.pr.number || agentLayer.headSha !== layer.pr.headSha);
-
-  const ensureRunning = async () => {
+  const ensureRunning = () => {
     if (!session) throw new Error("No agent available");
-    const token = source.gitToken();
-    if (!token) throw new Error("Agents need a real GitHub sign-in (demo data has no code to read).");
-    const here = session.getSnapshot().layer;
-    const needCheckout = !session.running || !here || here.headSha !== layer.pr.headSha;
-    try {
-      if (needCheckout) {
-        setPreparing(session.running ? `Moving the checkout to layer ${layer.index}…` : "Checking out this layer…");
-        const wt = await invoke<Worktree>("worktree_prepare", {
-          token, owner: repo.owner, repo: repo.repo, number: layer.pr.number, headSha: layer.pr.headSha, baseRef: layer.pr.baseRef, slot,
-        });
-        if (!session.running) {
-          setPreparing(`Starting ${session.agentName}…`);
-          await session.start(wt.path);
-        }
-      }
-      session.moveTo({ index: layer.index, total: stack.layers.length, pr: layer.pr.number, title: layer.pr.title, headSha: layer.pr.headSha, baseSha: layer.pr.baseSha });
-    } finally {
-      setPreparing(null);
-    }
+    return ensure(session, layer);
   };
 
   const send = async (text: string, display?: string) => {

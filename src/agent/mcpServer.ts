@@ -45,6 +45,58 @@ const TOOLS = [
     },
   },
   {
+    name: "set_layer_guide",
+    description:
+      "Guide mode only. Record the guide for one layer: a summary, how complex it is relative to the other layers, where the reviewer should spend attention, and what is safe to skim. Read-only: this records no findings and posts nothing. Call it for each layer as soon as you finish it; you may call it again to revise. Focus-area lines are new-side lines in this layer's diff; a range must sit inside one hunk. On a validation error nothing is saved: fix the problems named and call again.",
+    inputSchema: {
+      type: "object",
+      required: ["pr", "summary", "tier", "tier_reason", "focus_areas"],
+      properties: {
+        pr: { type: "number", description: "PR number of the layer" },
+        summary: { type: "string", description: "2-3 sentences on what the layer does" },
+        tier: { type: "string", enum: ["light", "moderate", "heavy"], description: "Complexity relative to the other layers in this stack, not size alone" },
+        tier_reason: { type: "string", description: "One line: why this tier" },
+        focus_areas: {
+          type: "array", minItems: 1, maxItems: 5, description: "Where to spend attention, most important first",
+          items: {
+            type: "object", required: ["path", "line", "title", "why"],
+            properties: {
+              path: { type: "string" },
+              start_line: { type: "number", description: "First line of the range (new side); omit for a single line" },
+              line: { type: "number", description: "Last line of the range (new side)" },
+              title: { type: "string", description: "Short, under 60 characters" },
+              why: { type: "string", description: "One sentence on what to check here" },
+            },
+          },
+        },
+        skim: {
+          type: "array", description: "Mechanical changes that are safe to skim: renames, generated code, fixtures, lockfiles, pure moves",
+          items: { type: "object", required: ["path", "why"], properties: { path: { type: "string" }, why: { type: "string" } } },
+        },
+        questions: { type: "array", maxItems: 4, items: { type: "string" }, description: "Short questions the diff and description don't answer" },
+      },
+    },
+  },
+  {
+    name: "set_stack_guide",
+    description:
+      "Guide mode only; call once, after set_layer_guide for every open layer. Record the whole-stack guide: summary, the role of each layer, cross-layer concerns, a plan, and the ranking of every guided PR hardest first (each exactly once). Read-only: records no findings and posts nothing.",
+    inputSchema: {
+      type: "object",
+      required: ["summary", "layer_roles", "plan", "ranking"],
+      properties: {
+        summary: { type: "string", description: "Markdown, one short paragraph: the goal and the end state once every layer lands" },
+        layer_roles: { type: "array", items: { type: "object", required: ["pr", "role"], properties: { pr: { type: "number" }, role: { type: "string", description: "One line on its part in the story" } } } },
+        cross_layer: {
+          type: "array", description: "Concerns visible only across layers (an API added low and changed higher, a split migration, a layer that undoes another). May be empty.",
+          items: { type: "object", required: ["text"], properties: { text: { type: "string" }, prs: { type: "array", items: { type: "number" } } } },
+        },
+        plan: { type: "string", description: "Markdown, 1-3 sentences: where to spend time" },
+        ranking: { type: "array", items: { type: "number" }, description: "Every guided PR number, hardest first, each exactly once" },
+      },
+    },
+  },
+  {
     name: "set_review_summary",
     description: "Draft the overall review summary the reviewer may submit with their verdict.",
     inputSchema: { type: "object", required: ["text"], properties: { text: { type: "string" } } },
@@ -61,6 +113,10 @@ async function callTool(name: string, args: Record<string, unknown>, session: st
   if (!ctx || !b) return text("This agent session is no longer attached to a review in Stack Reviewer.", true);
   // Tools default to the layer the agent is working on, which may differ from the one on screen.
   const pr = typeof args.pr === "number" ? args.pr : ctx.activePr();
+  if (name === "set_stack_guide") {
+    const r = await b.setStackGuide(args, ctx.label());
+    return r.ok ? text(`Stack guide saved (${r.id}).`) : text(r.error, true);
+  }
   if (pr == null) return text("No layer is selected for this conversation yet.", true);
   switch (name) {
     case "get_review_context":
@@ -74,6 +130,10 @@ async function callTool(name: string, args: Record<string, unknown>, session: st
     case "set_layer_brief":
       b.setBrief(pr, String(args.summary ?? ""), Array.isArray(args.reading_order) ? args.reading_order.map(String) : [], ctx.agentName);
       return text(`Brief updated for #${pr}.`);
+    case "set_layer_guide": {
+      const r = await b.setLayerGuide(pr, args, ctx.label());
+      return r.ok ? text(`Guide saved for ${r.id}.`) : text(r.error, true);
+    }
     case "set_review_summary":
       b.setSummary(pr, String(args.text ?? ""));
       return text(`Summary drafted for #${pr} for the reviewer to edit.`);

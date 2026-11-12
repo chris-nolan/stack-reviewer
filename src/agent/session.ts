@@ -5,7 +5,7 @@
 import type { RequestPermissionRequest, RequestPermissionResponse, SessionNotification } from "@agentclientprotocol/sdk";
 import { useSyncExternalStore } from "react";
 import { AcpConnection } from "./acp";
-import { agentContexts, parseFindingBlocks, reviewBridge } from "./bridge";
+import { agentContexts, parseFindingBlocks, parseGuideBlocks, reviewBridge } from "./bridge";
 import { startMcpServer } from "./mcpServer";
 import { durable } from "../lib/durable";
 import { knownSettings, prefs, readSettings, type AgentSetting, type SessionState, type SettingKind } from "./settings";
@@ -46,13 +46,19 @@ const OWN_LABELS: Record<string, string> = {
   add_finding: "Recorded a finding",
   set_layer_brief: "Wrote the layer summary",
   set_review_summary: "Drafted the review summary",
+  set_layer_guide: "Guided a layer",
+  set_stack_guide: "Wrote the stack guide",
 };
 
 /** "mcp__stack-reviewer__add_finding" → "Recorded a finding"; other MCP tools → "server: tool name". */
-export function toolLabel(title: string): string {
+export function toolLabel(title: string, input?: unknown): string {
   const m = /^mcp__([^_]+(?:-[^_]+)*)__(.+)$/.exec(title);
   if (!m) return title;
-  if (m[1] === "stack-reviewer") return OWN_LABELS[m[2]] ?? m[2].replace(/_/g, " ");
+  if (m[1] === "stack-reviewer") {
+    const pr = (input as { pr?: unknown } | null | undefined)?.pr;
+    if (m[2] === "set_layer_guide" && typeof pr === "number") return `Guided layer #${pr}`;
+    return OWN_LABELS[m[2]] ?? m[2].replace(/_/g, " ");
+  }
   return `${m[1]}: ${m[2].replace(/_/g, " ")}`;
 }
 
@@ -74,7 +80,13 @@ export class AgentSession {
     const saved = durable.get<Saved | null>("chat", this.storageKey, null);
     this.savedSessionId = saved?.sessionId ?? null;
     this.snap = { status: "idle", items: saved?.items ?? [], worktree: null, settings: presetSettings(agentId), layer: saved?.layer ?? null };
-    agentContexts.set(this.token, { stackId, agentName, activePr: () => this.snap.layer?.pr ?? null });
+    agentContexts.set(this.token, { stackId, agentName, label: () => this.label(), activePr: () => this.snap.layer?.pr ?? null });
+  }
+
+  /** "Claude Code · Opus 5.5 · high": the agent with the model and effort it is using. */
+  label(): string {
+    const parts = this.snap.settings.map((x) => x.options.find((o) => o.value === x.current)?.name ?? x.current).filter(Boolean);
+    return [this.agentName, ...parts].join(" · ");
   }
 
   private get storageKey() {
@@ -283,7 +295,7 @@ export class AgentSession {
     return !!this.conn && !!this.sessionId;
   }
 
-  async send(text: string, display = text): Promise<void> {
+  async send(text: string, display = text, opts: { guide?: boolean } = {}): Promise<void> {
     if (!this.conn || !this.sessionId) throw new Error("Agent is not running");
     if (this.layerNote) {
       text = `${this.layerNote}\n\n${text}`;
@@ -293,8 +305,8 @@ export class AgentSession {
     this.set({ status: "busy" });
     const firstNew = this.snap.items.length;
     try {
-      const res = await this.conn.prompt(this.sessionId, this.usesMcp ? text : `${text}\n\n${FALLBACK_FORMAT}`);
-      if (!this.usesMcp) await this.harvestFindings(firstNew);
+      const res = await this.conn.prompt(this.sessionId, this.usesMcp ? text : `${text}\n\n${opts.guide ? FALLBACK_GUIDE_FORMAT : FALLBACK_FORMAT}`);
+      if (!this.usesMcp) await (opts.guide ? this.harvestGuide(firstNew) : this.harvestFindings(firstNew));
       if (res.stopReason === "refusal") this.notice(`${this.agentName} declined this request.`);
       if (res.stopReason === "max_tokens" || res.stopReason === "max_turn_requests") this.notice(`${this.agentName} hit its limit before finishing.`);
     } catch (e) {
@@ -360,7 +372,7 @@ export class AgentSession {
         if (u.content.type === "text") appendChunk("thought", u.content.text);
         break;
       case "tool_call":
-        this.push({ kind: "tool", id: uid(), toolCallId: u.toolCallId, title: toolLabel(u.title), status: u.status ?? "pending" });
+        this.push({ kind: "tool", id: uid(), toolCallId: u.toolCallId, title: toolLabel(u.title, u.rawInput), status: u.status ?? "pending" });
         break;
       case "config_option_update":
         if (u.configOptions) {
@@ -374,12 +386,34 @@ export class AgentSession {
       case "tool_call_update":
         this.patchItem(
           (i) => i.kind === "tool" && i.toolCallId === u.toolCallId,
-          (i) => ({ ...i, title: u.title ? toolLabel(u.title) : (i as { title: string }).title, status: u.status ?? (i as { status: string }).status }) as ChatItem,
+          (i) => ({ ...i, title: u.title ? toolLabel(u.title, u.rawInput) : (i as { title: string }).title, status: u.status ?? (i as { status: string }).status }) as ChatItem,
         );
         break;
       default:
         break;
     }
+  }
+
+  /** Guide mode without MCP: the agent's ```guide blocks are applied in order (layers first, then the stack). */
+  private async harvestGuide(from: number) {
+    const b = reviewBridge.get(this.stackId);
+    if (!b) return;
+    const text = this.snap.items.slice(from).filter((i) => i.kind === "agent").map((i) => (i as { text: string }).text).join("\n");
+    const blocks = parseGuideBlocks(text);
+    const errors: string[] = [];
+    let saved = 0;
+    for (const blk of blocks.filter((x) => x.kind === "layer")) {
+      const r = await b.setLayerGuide((blk as { pr: number }).pr, blk.input, this.label());
+      if (r.ok) saved++;
+      else errors.push(r.error);
+    }
+    for (const blk of blocks.filter((x) => x.kind === "stack")) {
+      const r = await b.setStackGuide(blk.input, this.label());
+      if (r.ok) saved++;
+      else errors.push(r.error);
+    }
+    if (!blocks.length) this.notice("No guide blocks came back from the agent.", "error");
+    else if (errors.length) this.notice(`Saved ${saved} of ${blocks.length} guide parts. ${errors.join(" ")}`, "error");
   }
 
   private async harvestFindings(from: number) {
@@ -399,6 +433,15 @@ const FALLBACK_FORMAT = `This client cannot give you review tools, so report eac
 [{"path": "src/file.ts", "line": 42, "severity": "High|Medium|Low", "title": "short title", "body": "why and what to do", "suggestion": "optional replacement line"}]
 \`\`\`
 Use new-side line numbers that appear in the diff.`;
+
+const FALLBACK_GUIDE_FORMAT = `This client cannot give you review tools, so report the guide in fenced blocks exactly like (one \`\`\`guide block holding a JSON array; layers first, bottom to top, the stack object last):
+\`\`\`guide
+[
+  {"layer": {"pr": 412, "summary": "...", "tier": "light|moderate|heavy", "tier_reason": "...", "focus_areas": [{"path": "src/file.ts", "start_line": 10, "line": 18, "title": "...", "why": "..."}], "skim": [{"path": "package-lock.json", "why": "..."}], "questions": ["..."]}},
+  {"stack": {"summary": "...", "layer_roles": [{"pr": 412, "role": "..."}], "cross_layer": [{"text": "...", "prs": [412, 413]}], "plan": "...", "ranking": [413, 412]}}
+]
+\`\`\`
+Use new-side line numbers that appear in each layer's diff. The ranking lists every guided PR exactly once, hardest first.`;
 
 // Kept on globalThis so a dev-mode hot reload of this module doesn't drop live conversations
 // (and orphan their agent processes).
@@ -457,4 +500,63 @@ Findings you record for other layers land on those layers, so always pass the ri
 Finish with a per-layer summary: what each layer does, what you flagged, and anything that needs a human decision. Mention problems that only show up across layers.
 
 Do not edit files, commit, push or post anything to GitHub.`;
+}
+
+export type GuideLayerInfo = { index: number; number: number; title: string };
+export type GuideKeptInfo = { number: number; tier: string; reason: string; role?: string };
+
+const GUIDE_FIELDS = `Per layer, call set_layer_guide with:
+- \`summary\`: 2-3 sentences on what the layer does.
+- \`tier\`: light, moderate or heavy, judged against the other layers in this stack. Weigh risk, how much has to be understood rather than skimmed, new concepts, concurrency/security/data changes and cross-cutting reach. Size alone is not complexity: a 900-line fixture is Light.
+- \`tier_reason\`: one line, e.g. "new concurrency around token refill; the rest is plumbing".
+- \`focus_areas\`: 1-5 items {path, start_line?, line, title, why}, most important first. Lines are new-side lines in this layer's diff, and a range must sit inside one hunk.
+- \`skim\`: files that are safe to skim (renames, generated code, fixtures, lockfiles, pure moves), each with a why.
+- \`questions\`: 0-4 short questions the diff and description don't answer.`;
+
+const GUIDE_RULES = `Judge complexity relative to the other layers. Keep output terse: the guide lives in the app, so end with a message of a few lines at most.
+Do not record findings (no add_finding), edit files, commit, push or post anything to GitHub. This is a guide, not a review.`;
+
+const GUIDE_STACK = `After the last layer, call set_stack_guide once with:
+- \`summary\`: one short paragraph (markdown): the goal and the end state once every layer lands.
+- \`layer_roles\`: {pr, role} for each layer, one line on its part in the story.
+- \`cross_layer\`: concerns visible only across layers (an API added low and changed higher, a migration split across PRs, a layer that undoes another). May be empty.
+- \`plan\`: 1-3 sentences (markdown) on where to spend time.
+- \`ranking\`: every guided PR number, hardest first, each exactly once.
+If a tool call returns an error, fix what it names and call again.`;
+
+export function guideStackPrompt(layers: GuideLayerInfo[]): string {
+  const list = layers.map((l) => `layer ${l.index} (#${l.number} ${l.title})`).join(", ");
+  return `Guide me through this stack before I review it. Read every open layer from the bottom up: ${list}.
+
+The working directory only has one layer's head checked out, so read each layer's diff from git objects.
+For each layer, bottom to top:
+1. Call get_review_context with that layer's \`pr\` number: its description, changed files, \`base_sha\` and \`head_sha\`.
+2. Read the layer's own changes with \`git diff <base_sha> <head_sha>\` (fetch first if a commit is missing: \`git fetch origin <head_sha>\`). Use \`git show <head_sha>:<path>\` for surrounding code. Layers below are already in its base.
+3. Call set_layer_guide for that layer right away, so I see progress. You may revise a tier later with another call.
+
+${GUIDE_FIELDS}
+
+${GUIDE_STACK}
+
+${GUIDE_RULES}`;
+}
+
+/** Re-guide only the listed layers (stale, new, or the rest of an interrupted run), re-using the other layers' guides. */
+export function guideRefreshPrompt(layers: GuideLayerInfo[], kept: GuideKeptInfo[], opts: { resume?: boolean } = {}): string {
+  const list = layers.map((l) => `layer ${l.index} (#${l.number} ${l.title})`).join(", ");
+  const others = kept.length
+    ? `The other layers already have guides; do not reread them. Their current tier, reason and role, for ranking:\n${kept.map((k) => `- #${k.number}: ${k.tier} · ${k.reason}${k.role ? ` · role: ${k.role}` : ""}`).join("\n")}`
+    : "";
+  return `${opts.resume ? "Continue the guide for this stack" : "Refresh the guide for this stack"}. ${opts.resume ? "These layers still need a guide" : "These layers are new or have new commits since their guide"}: ${list}. Work bottom to top.
+
+For each, call get_review_context with its \`pr\`, read its changes with \`git diff <base_sha> <head_sha>\` (fetch first if a commit is missing), and call set_layer_guide right away.
+
+${GUIDE_FIELDS}
+
+${others}
+
+Then call set_stack_guide again with the full picture (summary, layer_roles for every layer, cross_layer, plan, and a ranking of every open layer, hardest first, each exactly once), re-ranking against the layers you did not reread.
+If a tool call returns an error, fix what it names and call again.
+
+${GUIDE_RULES}`;
 }

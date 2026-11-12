@@ -6,8 +6,8 @@
 
 import { invoke, isTauri } from "./platform";
 
-export type Ns = "review" | "chat" | "home" | "meta";
-export const NAMESPACES: Ns[] = ["review", "chat", "home", "meta"];
+export type Ns = "review" | "chat" | "home" | "meta" | "guide";
+export const NAMESPACES: Ns[] = ["review", "chat", "home", "meta", "guide"];
 
 export interface Backend {
   load(namespaces: string[]): Promise<Record<string, Record<string, string>>>;

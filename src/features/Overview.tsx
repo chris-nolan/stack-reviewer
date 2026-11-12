@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PaletteButton } from "../app/Palette";
 import { useCommands } from "../app/commands";
 import { useQueries } from "@tanstack/react-query";
@@ -8,11 +8,17 @@ import { useSource } from "../app/session";
 import { useStack } from "../app/queries";
 import type { FileChange, Layer, RepoRef, Stack } from "../lib/model";
 import { repoKey } from "../lib/model";
-import { prKey, reviewStore } from "../lib/reviewStore";
+import { prKey, reviewStore, useReviewState } from "../lib/reviewStore";
 import { formatRanges, progressLabel, resumeLayer } from "../lib/stacks";
 import { splitConventional, summarize } from "../lib/markdown";
 import { useSession } from "../app/session";
 import { CHECK_STYLE, ChecksLabel, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing, Spinner, timeAgo } from "../ui/bits";
+import { lastAgent, useGuideRun } from "../agent/guideRun";
+import { focusProgress, guideTargets, ordinal, rankOf, type GuideDoc } from "../lib/guide";
+import { local } from "../lib/platform";
+import { GuideCard } from "./guide/GuideCard";
+import { LaunchPopover } from "./guide/LaunchPopover";
+import { GuideIcon, TierLabel, TierMeter } from "../ui/guide";
 
 export function Overview({ repo, stackKey }: { repo: RepoRef; stackKey: string }) {
   const { up } = useNav();
@@ -58,6 +64,28 @@ function OverviewBody({ stack }: { stack: Stack }) {
   const compact = stack.layers.length > 8;
   const pinned = usePinnedStacks().some((p) => pinId(p) === pinId({ repo: stack.repo, stackKey: stack.key }));
 
+  // "Guide me": the guide, its run, and how the layer list is ordered.
+  const guide = useGuideRun(stack);
+  const doc = guide.doc;
+  const running = doc.run?.status === "running";
+  const hasGuide = !!doc.stack || Object.keys(doc.layers).length > 0;
+  const targets = useMemo(() => guideTargets(doc, stack.layers), [doc, stack.layers]);
+  const changed = new Set([...targets.stale, ...targets.missing, ...targets.removed]).size;
+  const [launch, setLaunch] = useState<null | "all" | "refresh">(null);
+  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(() => local.get("guideCollapsed", {}));
+  const collapsed = collapsedMap[guide.stackId] ?? compact;
+  const setCollapsed = (c: boolean) => setCollapsedMap((m) => { const n = { ...m, [guide.stackId]: c }; local.set("guideCollapsed", n); return n; });
+  const [order, setOrder] = useState<"bottom" | "hardest">("bottom");
+  useEffect(() => {
+    // "Guide me" from the palette on the review page lands here with the launcher open.
+    if (local.get<string>("guideLaunch", "") === guide.stackId) { local.set("guideLaunch", ""); setLaunch("all"); }
+  }, [guide.stackId]);
+  useGuideCommands(open.length, doc, changed, running, setLaunch, guide.start);
+  const layersShown = order === "hardest" && doc.stack
+    ? [...stack.layers].sort((a, b) => (doc.stack!.ranking.indexOf(a.pr.number) + 1 || 999) - (doc.stack!.ranking.indexOf(b.pr.number) + 1 || 999) || a.index - b.index)
+    : stack.layers;
+  const startLaunch = (o: Parameters<typeof guide.start>[0]) => { setLaunch(null); void guide.start(o); };
+
   const filesQ = useQueries({
     queries: stack.layers.map((l) => ({
       queryKey: ["files", source.kind, repoKey(stack.repo), l.pr.number, l.pr.headSha],
@@ -85,6 +113,16 @@ function OverviewBody({ stack }: { stack: Stack }) {
             <ChecksLabel state={stack.checks} />
           </div>
         </div>
+        <div style={{ position: "relative", flex: "0 0 auto" }}>
+          {running ? (
+            <button className="btn btn-agent" style={{ padding: "9px 12px" }} onClick={guide.stop}><span className="spinner" aria-hidden="true" /> Stop guide</button>
+          ) : hasGuide && !!doc.stack && changed > 0 ? (
+            <button className="btn btn-agent" style={{ padding: "9px 12px" }} data-guide-launch onClick={() => setLaunch((l) => (l ? null : "refresh"))}><GuideIcon /> Refresh guide · {changed} out of date</button>
+          ) : !hasGuide ? (
+            <button className="btn btn-agent" style={{ padding: "9px 12px" }} data-guide-launch disabled={!open.length} title={open.length ? "Have an agent read every open layer and guide your review" : "No open layers to guide"} onClick={() => setLaunch((l) => (l ? null : "all"))}><GuideIcon /> Guide me</button>
+          ) : null}
+          {launch && <LaunchPopover stackId={guide.stackId} openLayers={open.length} mode={launch} onStart={startLaunch} onClose={() => setLaunch(null)} />}
+        </div>
         <button
           className="btn"
           style={{ padding: "9px 12px" }}
@@ -99,15 +137,31 @@ function OverviewBody({ stack }: { stack: Stack }) {
         </button>
       </section>
 
-      {allLoaded && <CrossLayerNotes stack={stack} files={filesByLayer as FileChange[][]} onLayer={(n) => openReview(stack.layers[n - 1])} />}
+      <GuideCard
+        stack={stack} doc={doc} compact={compact} collapsed={collapsed} onCollapse={setCollapsed} preparing={guide.preparing}
+        onLayer={(n) => openReview(stack.layers[n - 1])} onViewChat={guide.viewChat} onStop={guide.stop}
+        onContinue={() => void guide.start({ ...lastAgent(), mode: "continue" })}
+        onRerun={() => setLaunch("all")} onRefresh={() => setLaunch("refresh")}
+      />
+
+      {allLoaded && <CrossLayerNotes stack={stack} files={filesByLayer as FileChange[][]} doc={doc} onLayer={(n) => openReview(stack.layers[n - 1])} />}
 
       <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", gap: 16 }}>
-        <section aria-label="Layers" className="card" style={{ flex: compact ? "0 1 440px" : "0 1 480px", minWidth: 320, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div className="label" style={{ padding: "10px 14px 6px" }}>Layers · bottom first</div>
+        <section aria-label="Layers" className="card" style={{ flex: compact ? (hasGuide ? "0 1 540px" : "0 1 440px") : "0 1 480px", minWidth: 320, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 6px" }}>
+            <span className="label" style={{ flex: "1 1 auto" }}>Layers · {order === "hardest" && doc.stack ? "hardest first" : "bottom first"}</span>
+            {doc.stack && (
+              <div role="group" aria-label="Layer order" style={{ display: "flex", border: "1px solid var(--border-strong)", borderRadius: 6, overflow: "hidden" }}>
+                {([["bottom", "Bottom first"], ["hardest", "Hardest first"]] as const).map(([k, label]) => (
+                  <button key={k} aria-pressed={order === k} onClick={() => setOrder(k)} style={{ padding: "2px 8px", border: 0, fontSize: 11.5, background: order === k ? "var(--agent-bg)" : "transparent", color: order === k ? "var(--agent)" : "var(--muted)" }}>{label}</button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="scroll" style={{ flex: "1 1 auto", padding: compact ? "0 4px 6px" : "0 8px 8px", display: "flex", flexDirection: "column", gap: compact ? 1 : 8 }}>
-            {stack.layers.map((l) => (
+            {layersShown.map((l) => (
               <LayerCard
-                key={l.pr.number} layer={l} stack={stack} current={l === resume} files={filesByLayer[l.index - 1]} compact={compact}
+                key={l.pr.number} layer={l} stack={stack} doc={doc} current={l === resume} files={filesByLayer[l.index - 1]} compact={compact}
                 highlighted={hover === l.index} onHover={(on) => setHover(on ? l.index : null)} onOpen={() => openReview(l)}
               />
             ))}
@@ -115,7 +169,7 @@ function OverviewBody({ stack }: { stack: Stack }) {
         </section>
 
         {allLoaded ? (
-          <Matrix stack={stack} files={filesByLayer as FileChange[][]} onOpen={openReview} hover={hover} onHover={setHover} />
+          <Matrix stack={stack} doc={doc} files={filesByLayer as FileChange[][]} onOpen={openReview} hover={hover} onHover={setHover} />
         ) : (
           <div className="card" style={{ flex: "1 1 auto", padding: 16 }}><Spinner label="Loading files for every layer…" /></div>
         )}
@@ -124,13 +178,26 @@ function OverviewBody({ stack }: { stack: Stack }) {
   );
 }
 
-function LayerCard({ layer, stack, current, files, compact, highlighted, onHover, onOpen }: {
-  layer: Layer; stack: Stack; current: boolean; files?: FileChange[]; compact: boolean; highlighted: boolean; onHover: (on: boolean) => void; onOpen: () => void;
+function LayerCard({ layer, stack, doc, current, files, compact, highlighted, onHover, onOpen }: {
+  layer: Layer; stack: Stack; doc: GuideDoc; current: boolean; files?: FileChange[]; compact: boolean; highlighted: boolean; onHover: (on: boolean) => void; onOpen: () => void;
 }) {
   const s = LAYER_STYLE[layer.mine];
   const c = CHECK_STYLE[layer.pr.checks];
-  const brief = reviewStore.get(prKey(stack.repo, layer.pr.number)).brief;
-  const firstPara = brief?.summary ?? summarize(layer.pr.body, 220);
+  const review = useReviewState(prKey(stack.repo, layer.pr.number));
+  const brief = review.brief;
+  const lg = doc.layers[layer.pr.number];
+  const role = doc.stack?.layerRoles.find((r) => r.pr === layer.pr.number)?.role;
+  const rank = rankOf(doc.stack?.ranking, layer.pr.number);
+  const stale = !!lg && lg.headSha !== layer.pr.headSha;
+  const fp = lg ? focusProgress(lg.focus, review.focusDone) : null;
+  const run = doc.run?.status === "running" ? doc.run : null;
+  const runState = run && run.pending.includes(layer.pr.number) ? (run.reading === layer.pr.number ? "reading" : "queued") : null;
+  const guideBit = runState ? (
+    <span style={{ color: "var(--agent)", fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center" }}>{runState === "reading" ? <><span className="spinner" aria-hidden="true" />Reading</> : <span className="faint">Queued</span>}</span>
+  ) : lg ? (
+    <TierLabel tier={lg.tier} rank={rank} stale={stale} />
+  ) : null;
+  const firstPara = role ?? brief?.summary ?? summarize(layer.pr.body, 220);
   const viewed = files?.filter((f) => f.viewed).length;
   const title = splitConventional(layer.pr.title);
   if (compact) {
@@ -150,6 +217,14 @@ function LayerCard({ layer, stack, current, files, compact, highlighted, onHover
           {title.tag && <span className="faint mono" style={{ fontSize: 11, marginRight: 6 }}>{title.tag}</span>}
           <span style={{ fontWeight: 500 }}>{title.text}</span>
         </span>
+        {runState ? <span style={{ flex: "0 0 auto", fontSize: 11, color: "var(--agent)" }}>{runState === "reading" ? "reading" : "queued"}</span> : lg ? (
+          <span style={{ flex: "0 0 auto", display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11, color: "var(--agent)" }}>
+            <TierMeter tier={lg.tier} dim={stale} />
+            {rank && <span className="mono">{ordinal(rank.rank)}</span>}
+            {stale && <span style={{ color: "var(--warn-fg)" }}>stale</span>}
+            {fp && <span className="mono" title="Focus areas ticked">{fp.done}/{fp.total}</span>}
+          </span>
+        ) : null}
         <span style={{ flex: "0 0 auto", fontSize: 12, color: c.color }} title={c.word}>{c.glyph}</span>
         <span className="muted mono" style={{ flex: "0 0 auto", minWidth: 64, fontSize: 11, textAlign: "right", whiteSpace: "nowrap" }}>{viewed != null ? `${viewed}/` : ""}{layer.pr.changedFiles} files</span>
       </button>
@@ -165,11 +240,12 @@ function LayerCard({ layer, stack, current, files, compact, highlighted, onHover
           <strong style={{ fontWeight: 600 }}>{title.text}</strong>
           {layer.pr.isDraft && <span className="pill" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>draft</span>}
         </span>
-        {firstPara && <span className="prose" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{firstPara}{brief ? <span className="muted"> · {brief.agent}</span> : null}</span>}
-        <span style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 12 }}>
+        {firstPara && <span className="prose" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{firstPara}{brief && !role ? <span className="muted"> · {brief.agent}</span> : null}</span>}
+        <span style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 12, alignItems: "center" }}>
+          {guideBit}
           <span style={{ color: s.fg }}>{s.glyph} {s.word}</span>
           <span style={{ color: CHECK_STYLE[layer.pr.checks].color }}>{CHECK_STYLE[layer.pr.checks].glyph} {CHECK_STYLE[layer.pr.checks].word}</span>
-          <span className="muted">{layer.pr.changedFiles} files{viewed != null ? ` · ${viewed} viewed` : ""} · <span className="add">+{layer.pr.additions}</span> <span className="del">−{layer.pr.deletions}</span></span>
+          <span className="muted">{layer.pr.changedFiles} files{viewed != null ? ` · ${viewed} viewed` : ""}{fp ? <span style={{ color: "var(--agent)" }}> · focus {fp.done}/{fp.total}</span> : null} · <span className="add">+{layer.pr.additions}</span> <span className="del">−{layer.pr.deletions}</span></span>
         </span>
       </span>
       {current && <span className="btn btn-sm" style={{ alignSelf: "center", background: "#2b3a52", border: 0, color: "var(--text)" }}>Resume</span>}
@@ -181,7 +257,7 @@ function heat(t: number) {
   return t < 10 ? "#18212e" : t < 30 ? "#1c2b40" : t < 80 ? "#223652" : "#2a4467";
 }
 
-function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files: FileChange[][]; onOpen: (l: Layer, file?: string) => void; hover: number | null; onHover: (n: number | null) => void }) {
+function Matrix({ stack, doc, files, onOpen, hover, onHover }: { stack: Stack; doc: GuideDoc; files: FileChange[][]; onOpen: (l: Layer, file?: string) => void; hover: number | null; onHover: (n: number | null) => void }) {
   const [sel, setSel] = useState<{ layer: number; path: string } | null>(null);
   const source = useSource();
   // Open agent findings per layer/file, and unresolved review threads (fetched once the files are in).
@@ -219,7 +295,7 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
     <section aria-label="Files by layer" className="card" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", padding: "10px 14px 6px" }}>
         <span className="label">Where the stack touches the code · {rows.length} files</span>
-        <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · <span style={{ color: "var(--agent)" }}>●</span> open agent findings · <span style={{ color: "var(--accent)" }}>◆</span> open review threads · <span style={{ color: "var(--bad)" }}>✕</span> failing checks · double-click to open</span>
+        <span className="muted" style={{ fontSize: 12 }}>Darker = bigger change · ✓ viewed · <span style={{ color: "var(--agent)" }}>●</span> open agent findings · <span style={{ color: "var(--accent)" }}>◆</span> open review threads · <span style={{ color: "var(--agent)" }}>▢</span> focus area from the guide · <span style={{ color: "var(--bad)" }}>✕</span> failing checks · double-click to open</span>
       </div>
       <div className="scroll" style={{ flex: "1 1 auto", padding: "0 14px 10px" }} onMouseLeave={() => onHover(null)}>
         <div style={{ minWidth: 260 + cols * (colW + 4), display: "flex", flexDirection: "column" }}>
@@ -235,6 +311,7 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
               >
                 {l.pr.state === "OPEN" && l.pr.checks === "fail" && <span aria-label="checks failing" title="Checks failing" style={{ display: "block", color: "var(--bad)", fontSize: 10, lineHeight: 1 }}>✕</span>}
                 {dense ? l.index : <><span style={{ display: "block" }}>{l.index}</span><span className="mono" style={{ display: "block", fontSize: 10.5 }}>#{l.pr.number}</span></>}
+                {doc.layers[l.pr.number] && <span style={{ display: "flex", justifyContent: "center", marginTop: 3 }}><TierMeter tier={doc.layers[l.pr.number].tier} size={dense ? 9 : 10} dim={doc.layers[l.pr.number].headSha !== l.pr.headSha} /></span>}
               </button>
             ))}
           </div>
@@ -250,14 +327,15 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
                 const isSel = sel?.layer === l.index && sel.path === path;
                 const nf = findings[i].get(path) ?? 0;
                 const nt = threads[i].get(path) ?? 0;
+                const focusHere = doc.layers[l.pr.number]?.focus.filter((x) => x.path === path).length ?? 0;
                 return (
                   <button
                     key={l.pr.number}
                     onMouseEnter={() => onHover(l.index)}
                     onClick={() => setSel({ layer: l.index, path })}
                     onDoubleClick={() => onOpen(l, path)}
-                    aria-label={`${path} in layer ${l.index}, +${f.additions} −${f.deletions}${f.viewed ? ", viewed" : ""}${nf ? `, ${nf} open agent ${nf === 1 ? "finding" : "findings"}` : ""}${nt ? `, ${nt} open ${nt === 1 ? "thread" : "threads"}` : ""}`}
-                    style={{ height: 24, display: "flex", alignItems: "center", justifyContent: dense ? "center" : "space-between", gap: 4, padding: "0 6px", borderRadius: 5, border: `1px solid ${isSel ? "var(--accent-soft-fg)" : hover === l.index ? "#3a5a86" : "transparent"}`, background: heat(f.additions + f.deletions), color: "#9be5b8", fontFamily: "var(--mono)", fontSize: 11, overflow: "hidden" }}
+                    aria-label={`${path} in layer ${l.index}, +${f.additions} −${f.deletions}${f.viewed ? ", viewed" : ""}${nf ? `, ${nf} open agent ${nf === 1 ? "finding" : "findings"}` : ""}${nt ? `, ${nt} open ${nt === 1 ? "thread" : "threads"}` : ""}${focusHere ? `, ${focusHere} focus ${focusHere === 1 ? "area" : "areas"}` : ""}`}
+                    style={{ height: 24, display: "flex", alignItems: "center", justifyContent: dense ? "center" : "space-between", gap: 4, padding: "0 6px", borderRadius: 5, border: `1px solid ${isSel ? "var(--accent-soft-fg)" : hover === l.index ? "#3a5a86" : "transparent"}`, background: heat(f.additions + f.deletions), boxShadow: focusHere ? "inset 0 0 0 1.5px var(--agent)" : undefined, color: "#9be5b8", fontFamily: "var(--mono)", fontSize: 11, overflow: "hidden" }}
                   >
                     {!dense && <span>+{f.additions}</span>}
                     {f.viewed && <span style={{ color: "var(--accent)" }}>✓</span>}
@@ -289,8 +367,8 @@ function Matrix({ stack, files, onOpen, hover, onHover }: { stack: Stack; files:
   );
 }
 
-function CrossLayerNotes({ stack, files, onLayer }: { stack: Stack; files: FileChange[][]; onLayer: (n: number) => void }) {
-  const notes: { title: string; body: string; tone: "bad" | "warn" | "plain"; layer: number }[] = [];
+function CrossLayerNotes({ stack, files, doc, onLayer }: { stack: Stack; files: FileChange[][]; doc: GuideDoc; onLayer: (n: number) => void }) {
+  const notes: { title: string; body: string; tone: "bad" | "warn" | "plain" | "agent"; layer: number }[] = [];
   const failing = stack.layers.filter((l) => l.pr.state === "OPEN" && l.pr.checks === "fail");
   if (failing.length) {
     const lowest = failing[0];
@@ -304,19 +382,33 @@ function CrossLayerNotes({ stack, files, onLayer }: { stack: Stack; files: FileC
   for (const [path, ls] of hot) {
     notes.push({ title: `${path.split("/").pop()} · ${ls.length} layers`, body: `Edited in layers ${formatRanges(ls)}. Early findings here may be superseded later.`, tone: "plain", layer: ls[0] });
   }
+  // Concerns the guide found across layers join the app's own cards, marked with an amber dot.
+  const byPr = new Map(stack.layers.map((l) => [l.pr.number, l.index]));
+  for (const c of doc.stack?.crossLayer ?? []) {
+    const idx = c.prs.map((n) => byPr.get(n)).filter((n): n is number => n != null);
+    notes.push({ title: c.prs.length ? c.prs.map((n) => `#${n}`).join(" · ") : "Across the stack", body: c.text, tone: "agent", layer: idx[0] ?? 1 });
+  }
   if (!notes.length) return null;
-  const tone = { bad: ["var(--bad-bd)", "var(--bad-bg)"], warn: ["var(--warn-bd)", "var(--warn-bg)"], plain: ["#252a31", "#14181e"] };
+  const tone = { bad: ["var(--bad-bd)", "var(--bad-bg)"], warn: ["var(--warn-bd)", "var(--warn-bg)"], plain: ["#252a31", "#14181e"], agent: ["var(--agent-bd)", "var(--agent-bg)"] };
   return (
     <section aria-label="Across layers" style={{ flex: "0 0 auto", display: "flex", gap: 8, alignItems: "stretch", minWidth: 0 }}>
       <span className="label" style={{ flex: "0 0 auto", writingMode: "vertical-rl", transform: "rotate(180deg)", textAlign: "center", padding: "2px 0" }}>Across layers</span>
       <div className="chips-scroll" style={{ flex: "1 1 auto", alignItems: "stretch", gap: 8 }}>
         {notes.map((n) => (
-          <button key={n.title} onClick={() => onLayer(n.layer)} title={`Open layer ${n.layer}`} style={{ flex: "0 0 280px", padding: "9px 12px", borderRadius: 10, border: `1px solid ${tone[n.tone][0]}`, background: tone[n.tone][1], lineHeight: 1.45, textAlign: "left", display: "flex", flexDirection: "column", gap: 2, whiteSpace: "normal" }}>
-            <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title}</strong>
-            <span style={{ color: "var(--text-2)", fontSize: 12.5 }}>{n.body}</span>
+          <button key={n.title + n.body} onClick={() => onLayer(n.layer)} title={`Open layer ${n.layer}`} style={{ flex: "0 0 280px", padding: "9px 12px", borderRadius: 10, border: `1px solid ${tone[n.tone][0]}`, background: tone[n.tone][1], lineHeight: 1.45, textAlign: "left", display: "flex", flexDirection: "column", gap: 2, whiteSpace: "normal" }}>
+            <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", gap: 6, alignItems: "center" }}>{n.tone === "agent" && <span aria-label="From the guide" title="From the guide" style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: "var(--agent)" }} />}{n.title}</strong>
+            <span style={{ color: "var(--text-2)", fontSize: 12.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={n.body}>{n.body}</span>
           </button>
         ))}
       </div>
     </section>
   );
+}
+
+/** Palette commands for the guide on the overview. */
+function useGuideCommands(openLayers: number, doc: GuideDoc, changed: number, running: boolean, setLaunch: (m: "all" | "refresh") => void, start: ReturnType<typeof useGuideRun>["start"]) {
+  useCommands([
+    ...(openLayers && !running ? [{ id: "guide:start", group: "Actions" as const, title: doc.stack ? "Re-run the guide…" : "Guide me…", keywords: "guide agent summary complexity", run: () => setLaunch("all") }] : []),
+    ...(changed && !running ? [{ id: "guide:refresh", group: "Actions" as const, title: "Refresh guide", hint: `${changed} out of date`, keywords: "guide stale", run: () => void start({ ...lastAgent(), mode: "refresh" }) }] : []),
+  ]);
 }

@@ -6,6 +6,7 @@ import { rangeLabel } from "../../lib/diff";
 import { failureExcerpt } from "../../lib/logs";
 import { Markdown } from "../../ui/Markdown";
 import { DraftEditor } from "./Notes";
+import { focusWhere, type FocusItem } from "./GuideReview";
 import { checkRunState, CHECK_STYLE, ErrorBox, Spinner, timeAgo } from "../../ui/bits";
 import type { ConversationEntry } from "../../lib/model";
 
@@ -39,8 +40,10 @@ export function Modal({ label, onClose, children, width = 560 }: { label: string
 }
 
 export function FinishDialog({
-  layer, drafts, viewed, total, openFindings, nextLayer, summary, isOwn, onClose, onSubmit, onEditDraft, onRemoveDraft, onReviewFindings,
+  layer, drafts, viewed, total, openFindings, nextLayer, summary, isOwn, onClose, onSubmit, onEditDraft, onRemoveDraft, onReviewFindings, focusLeft = [], focusTotal = 0, onJumpFocus, onTickFocus,
 }: {
+  /** Guide focus areas not ticked yet. A reminder only: it never blocks submitting. */
+  focusLeft?: FocusItem[]; focusTotal?: number; onJumpFocus?: (f: FocusItem) => void; onTickFocus?: (id: string) => void;
   layer: Layer; drafts: DraftComment[]; viewed: number; total: number; openFindings: number; nextLayer: Layer | null; summary: string;
   isOwn: boolean; onClose: () => void; onSubmit: (event: ReviewEvent, body: string) => Promise<void>;
   onEditDraft: (id: string, body: string) => void; onRemoveDraft: (id: string) => void; onReviewFindings: () => void;
@@ -75,6 +78,22 @@ export function FinishDialog({
           </span>
         )}
       </div>
+      {focusLeft.length > 0 && (
+        <section aria-label="Focus areas not ticked" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--agent-bd)", background: "var(--agent-bg)" }}>
+          <strong style={{ color: "var(--agent)", fontWeight: 600 }}>{focusLeft.length} of {focusTotal} focus areas not ticked</strong>
+          {focusLeft.map((f) => (
+            <div key={f.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column" }}>
+                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.title}</span>
+                <span className="mono faint" style={{ fontSize: 11.5 }}>{focusWhere(f)}</span>
+              </span>
+              <button className="btn btn-sm" onClick={() => onJumpFocus?.(f)}>Jump</button>
+              <button className="btn btn-sm" onClick={() => onTickFocus?.(f.id)}>Tick</button>
+            </div>
+          ))}
+          <span className="faint" style={{ fontSize: 12 }}>A reminder only; you can submit without ticking them.</span>
+        </section>
+      )}
       {drafts.length > 0 && <DraftList drafts={drafts} onEdit={onEditDraft} onRemove={onRemoveDraft} />}
       <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <legend className="sr-only">Verdict</legend>

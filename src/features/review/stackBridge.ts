@@ -1,7 +1,11 @@
 // Implements the agent review tools for one stack. It works on any layer (not just the one on
 // screen) and shares React Query's cache with the UI, so tools and screens see the same data.
 
-import type { QueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useSource } from "../../app/session";
+import { guideStore } from "../../lib/guideStore";
+import { validateLayerGuide, validateStackGuide } from "../../lib/guide";
 import { reviewBridge, type FindingInput, type ReviewBridge } from "../../agent/bridge";
 import { commentableLines, parsePatch } from "../../lib/diff";
 import { failureExcerpt } from "../../lib/logs";
@@ -24,6 +28,7 @@ export function registerStackBridge(stackId: string, source: DataSource, qc: Que
 
   const bridge: ReviewBridge = {
     async context(pr) {
+      guideStore.markReading(stackId, pr);
       const stack = getStack();
       const layer = layerOf(pr);
       if (!layer) return { error: `PR #${pr} is not part of this stack.` };
@@ -73,6 +78,29 @@ export function registerStackBridge(stackId: string, source: DataSource, qc: Que
       reviewStore.setSummary(prKey(getStack().repo, pr), text);
     },
 
+    async setLayerGuide(pr, input, agent) {
+      const layer = layerOf(pr);
+      if (!layer) return { ok: false, error: `PR #${pr} is not part of this stack.` };
+      if (layer.pr.state !== "OPEN") return { ok: false, error: `#${pr} is ${layer.pr.state.toLowerCase()}; only open layers are guided.` };
+      const v = validateLayerGuide(input, pr, layer.pr.headSha, await files(layer));
+      if (!v.ok) return { ok: false, error: v.error };
+      const { summary, ...guide } = v.value;
+      guideStore.setLayer(stackId, { ...guide, agent, createdAt: Date.now() });
+      // The layer summary also feeds the brief card (no reading order from a guide).
+      reviewStore.setBrief(prKey(getStack().repo, pr), { summary, readingOrder: [], agent });
+      return { ok: true, id: `#${pr} (${guide.tier}, ${guide.focus.length} focus areas)` };
+    },
+
+    async setStackGuide(input, agent) {
+      const open = getStack().layers.filter((l) => l.pr.state === "OPEN").map((l) => l.pr.number);
+      const doc = guideStore.get(stackId);
+      const guided = open.filter((n) => doc.layers[n]);
+      const v = validateStackGuide(input, open, guided);
+      if (!v.ok) return { ok: false, error: v.error };
+      guideStore.setStack(stackId, { ...v.value, agent, createdAt: Date.now() });
+      return { ok: true, id: `ranked ${v.value.ranking.length} layers` };
+    },
+
     async checkFailures(pr) {
       const layer = layerOf(pr);
       if (!layer) return `PR #${pr} is not part of this stack.`;
@@ -92,4 +120,16 @@ export function registerStackBridge(stackId: string, source: DataSource, qc: Que
     },
   };
   reviewBridge.set(stackId, bridge);
+}
+
+/** Registers this stack's agent tools while the caller is mounted (and after: bridges outlive screens). */
+export function useStackBridge(stack: Stack) {
+  const source = useSource();
+  const qc = useQueryClient();
+  const ref = useRef(stack);
+  ref.current = stack;
+  const stackId = `${repoKey(stack.repo)}#${stack.key}`;
+  useEffect(() => {
+    registerStackBridge(stackId, source, qc, () => ref.current);
+  }, [stackId, source, qc]);
 }

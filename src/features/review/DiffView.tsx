@@ -9,8 +9,9 @@ import type { DraftComment, FileChange, Finding, RepoRef, ReviewThread } from ".
 import { repoKey } from "../../lib/model";
 import { SEVERITY_STYLE } from "../../ui/bits";
 import { DraftEditor } from "./Notes";
+import { FocusLabelRow, type FocusItem } from "./GuideReview";
 
-type Marks = { findings: Finding[]; threads: ReviewThread[]; drafts: DraftComment[] };
+type Marks = { findings: Finding[]; threads: ReviewThread[]; drafts: DraftComment[]; /** Guide focus areas in this file. */ focus?: FocusItem[] };
 
 type Props = {
   repo: RepoRef;
@@ -29,10 +30,17 @@ type Props = {
   onOpenComposer: (start: number, end: number) => void;
   onCloseComposer: () => void;
   onSaveComment: (start: number, end: number, body: string) => void;
+  onTickFocus?: (id: string) => void;
 };
 
 const ROW = 21;
 const GUTTER = 46;
+
+/** The guide focus range a new-side line sits in, for the amber gutter bar. */
+function focusAt(line: number | null, m: Marks): FocusItem | undefined {
+  return line == null ? undefined : m.focus?.find((f) => line >= (f.startLine ?? f.line) && line <= f.line);
+}
+const focusBar = (f: FocusItem | undefined, left: number) => f && <span aria-hidden="true" style={{ position: "absolute", left, top: 0, bottom: 0, width: 3, background: "var(--agent)", opacity: f.done ? 0.3 : 1, pointerEvents: "none" }} />;
 
 function markColor(line: number | null, m: Marks): string | null {
   if (line == null) return null;
@@ -167,27 +175,32 @@ type ListProps = Props & {
   onLineClick: (line: number, shift: boolean) => void;
 };
 
-type Item<R> = { kind: "row"; row: R } | { kind: "composer"; line: number };
+type Item<R> = { kind: "row"; row: R } | { kind: "composer"; line: number } | { kind: "focus"; f: FocusItem };
 
-function useList<R>(rows: R[], lineOf: (r: R) => number | null, composerEnd: number | null, focusLine: number | null, path: string) {
+function useList<R>(rows: R[], lineOf: (r: R) => number | null, composerEnd: number | null, focusLine: number | null, path: string, focus: FocusItem[] | undefined) {
   const items = useMemo(() => {
     const out: Item<R>[] = [];
+    const labels = new Map<number, FocusItem[]>();
+    for (const f of focus ?? []) labels.set(f.startLine ?? f.line, [...(labels.get(f.startLine ?? f.line) ?? []), f]);
     for (const r of rows) {
+      const at = lineOf(r);
+      if (at != null) for (const f of labels.get(at) ?? []) out.push({ kind: "focus", f });
       out.push({ kind: "row", row: r });
       if (composerEnd != null && lineOf(r) === composerEnd) out.push({ kind: "composer", line: composerEnd });
     }
     return out;
-  }, [rows, composerEnd, lineOf]);
+  }, [rows, composerEnd, lineOf, focus]);
   const scroller = useRef<HTMLDivElement>(null);
   const v = useVirtualizer({
     count: items.length,
     getScrollElement: () => scroller.current,
-    estimateSize: (i) => (items[i].kind === "composer" ? 150 : (items[i] as { row: { kind: string } }).row.kind === "gap" ? 30 : ROW),
+    estimateSize: (i) => (items[i].kind === "composer" ? 150 : items[i].kind === "focus" ? 34 : (items[i] as { row: { kind: string } }).row.kind === "gap" ? 30 : ROW),
     overscan: 40,
   });
   useEffect(() => {
     if (focusLine == null) return;
-    const idx = items.findIndex((it) => it.kind === "row" && lineOf(it.row) === focusLine);
+    // Land on the focus label when the line starts a focus range (it comes just before the row), so its why is in view.
+    const idx = items.findIndex((it) => (it.kind === "focus" && (it.f.startLine ?? it.f.line) === focusLine) || (it.kind === "row" && lineOf(it.row) === focusLine));
     if (idx >= 0) v.scrollToIndex(idx, { align: "center" });
   }, [focusLine, path]);
   useEffect(() => {
@@ -234,7 +247,7 @@ function GapLine({ gap, expand, indent }: { gap: GapRow; expand: ListProps["expa
 const unifiedLine = (r: DisplayRow) => (r.kind === "add" || r.kind === "ctx" ? r.newLine : null);
 
 const UnifiedList = memo(function UnifiedList(p: ListProps & { rows: DisplayRow[] }) {
-  const { items, scroller, v } = useList(p.rows, unifiedLine, p.composer?.end ?? null, p.focusLine, p.file.path);
+  const { items, scroller, v } = useList(p.rows, unifiedLine, p.composer?.end ?? null, p.focusLine, p.file.path, p.marks.focus);
   const widthCh = useMemo(() => p.rows.reduce((m, r) => ("text" in r ? Math.max(m, r.text.length) : m), 40), [p.rows]);
   return (
     <div ref={scroller} className="scroll" style={{ height: "100%", fontFamily: "var(--mono)", fontSize: 12.5, lineHeight: `${ROW}px`, tabSize: 4 }}>
@@ -245,6 +258,8 @@ const UnifiedList = memo(function UnifiedList(p: ListProps & { rows: DisplayRow[
             <div key={vi.key} data-index={vi.index} ref={v.measureElement} style={{ position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)` }}>
               {it.kind === "composer" ? (
                 <Composer range={p.composer} rows={p.patchRows} onCancel={p.onCloseComposer} onSave={p.onSaveComment} indent={GUTTER * 2 + 16} />
+              ) : it.kind === "focus" ? (
+                <FocusLabelRow f={it.f} indent={GUTTER * 2 + 16} onTick={(id) => p.onTickFocus?.(id)} />
               ) : (
                 <UnifiedRow row={it.row} {...p} />
               )}
@@ -266,7 +281,8 @@ function UnifiedRow({ row: r, marks, focusLine, onFocusLine, sel, onLineDown, on
   const mark = markColor(r.newLine, marks);
   const tokens = r.kind === "del" ? colours?.oldAt(r.oldLine) : colours?.newAt(r.newLine);
   return (
-    <div onClick={() => r.newLine != null && onFocusLine(r.newLine)} style={{ height: ROW, display: "flex", background: selected ? SEL_BG : focused ? "#2a2414" : bg, boxShadow: selected ? "inset 3px 0 0 var(--accent)" : focused ? "inset 3px 0 0 var(--agent)" : undefined }}>
+    <div onClick={() => r.newLine != null && onFocusLine(r.newLine)} style={{ position: "relative", height: ROW, display: "flex", background: selected ? SEL_BG : focused ? "#2a2414" : bg, boxShadow: selected ? "inset 3px 0 0 var(--accent)" : focused ? "inset 3px 0 0 var(--agent)" : undefined }}>
+      {focusBar(focusAt(r.newLine, marks), 4)}
       <span style={lineNoStyle}>{r.oldLine ?? ""}</span>
       <button
         style={lineNoStyle}
@@ -289,7 +305,7 @@ function UnifiedRow({ row: r, marks, focusLine, onFocusLine, sel, onLineDown, on
 const splitLine = (r: SplitDisplayRow) => (r.kind === "pair" ? r.right?.newLine ?? null : null);
 
 const SplitList = memo(function SplitList(p: ListProps & { rows: SplitDisplayRow[] }) {
-  const { items, scroller, v } = useList(p.rows, splitLine, p.composer?.end ?? null, p.focusLine, p.file.path);
+  const { items, scroller, v } = useList(p.rows, splitLine, p.composer?.end ?? null, p.focusLine, p.file.path, p.marks.focus);
   return (
     <div ref={scroller} className="scroll" style={{ height: "100%", fontFamily: "var(--mono)", fontSize: 12.5, lineHeight: `${ROW}px`, tabSize: 4 }}>
       <div style={{ height: v.getTotalSize(), position: "relative" }}>
@@ -297,7 +313,7 @@ const SplitList = memo(function SplitList(p: ListProps & { rows: SplitDisplayRow
           const it = items[vi.index];
           return (
             <div key={vi.key} data-index={vi.index} ref={v.measureElement} style={{ position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)` }}>
-              {it.kind === "composer" ? <Composer range={p.composer} rows={p.patchRows} onCancel={p.onCloseComposer} onSave={p.onSaveComment} indent={GUTTER + 40} /> : <SplitRow row={it.row} {...p} />}
+              {it.kind === "composer" ? <Composer range={p.composer} rows={p.patchRows} onCancel={p.onCloseComposer} onSave={p.onSaveComment} indent={GUTTER + 40} /> : it.kind === "focus" ? <FocusLabelRow f={it.f} indent={GUTTER + 12} onTick={(id) => p.onTickFocus?.(id)} /> : <SplitRow row={it.row} {...p} />}
             </div>
           );
         })}
@@ -322,7 +338,8 @@ function SplitRow({ row: r, marks, focusLine, onFocusLine, sel, onLineDown, onLi
         <span style={lineNoStyle}>{left?.oldLine ?? ""}</span>
         <span style={{ flex: "1 1 auto", minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", paddingLeft: 6, paddingRight: 8 }}>{left && <Code row={left} tokens={colours?.oldAt(left.oldLine)} />}</span>
       </div>
-      <div onClick={() => right?.newLine != null && onFocusLine(right.newLine)} style={{ display: "flex", alignItems: "flex-start", background: selected ? SEL_BG : focused ? "#2a2414" : sideBg(right, "add"), minWidth: 0 }}>
+      <div onClick={() => right?.newLine != null && onFocusLine(right.newLine)} style={{ position: "relative", display: "flex", alignItems: "flex-start", background: selected ? SEL_BG : focused ? "#2a2414" : sideBg(right, "add"), minWidth: 0 }}>
+        {focusBar(focusAt(right?.newLine ?? null, marks), 4)}
         <button style={lineNoStyle} disabled={!right?.newLine} title="Comment on this line (c). Shift-click or drag to select several lines" onMouseDown={(e) => { if (e.button === 0 && !e.shiftKey && right?.newLine) onLineDown(right.newLine); }} onMouseEnter={() => right?.newLine && onLineEnter(right.newLine)} onClick={(e) => { e.stopPropagation(); if (right?.newLine) onLineClick(right.newLine, e.shiftKey); }} aria-label={right?.newLine ? `Comment on line ${right.newLine}` : undefined}>{right?.newLine ?? ""}</button>
         <span style={{ flex: "0 0 12px", color: mark ?? "transparent" }} aria-hidden="true">●</span>
         <span style={{ flex: "1 1 auto", minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", paddingRight: 8 }}>{right && <Code row={right} tokens={colours?.newAt(right.newLine)} />}</span>

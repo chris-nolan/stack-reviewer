@@ -1,10 +1,10 @@
 // Sidebar file-list filters for the review screen. Pure logic.
 
-export type FileFilter = "all" | "unviewed" | "findings" | "comments";
-export type FileFilters = { kind: FileFilter; ext: string | null };
+export type FileFilter = "all" | "unviewed" | "findings" | "comments" | "focus";
+export type FileFilters = { kind: FileFilter; ext: string | null; /** Hide files the guide says are safe to skim. */ hideSkim?: boolean };
 export const NO_FILTER: FileFilters = { kind: "all", ext: null };
 
-export type FileFacts = { path: string; viewed: boolean; openFindings: number; openThreads: number; drafts: number };
+export type FileFacts = { path: string; viewed: boolean; openFindings: number; openThreads: number; drafts: number; /** Guide focus areas in the file. */ focus?: number; /** The guide marks the file as safe to skim. */ skim?: boolean };
 
 export const fileExt = (path: string): string => {
   const base = path.split("/").pop() ?? path;
@@ -13,11 +13,11 @@ export const fileExt = (path: string): string => {
 };
 
 const kindMatches = (f: FileFacts, kind: FileFilter) =>
-  kind === "all" ? true : kind === "unviewed" ? !f.viewed : kind === "findings" ? f.openFindings > 0 : f.openThreads + f.drafts > 0;
+  kind === "all" ? true : kind === "unviewed" ? !f.viewed : kind === "findings" ? f.openFindings > 0 : kind === "focus" ? (f.focus ?? 0) > 0 : f.openThreads + f.drafts > 0;
 
 export function applyFileFilters<T extends FileFacts>(files: T[], filters: FileFilters, currentPath?: string | null): T[] {
   return files.filter(
-    (f) => f.path === currentPath || (kindMatches(f, filters.kind) && (!filters.ext || fileExt(f.path) === filters.ext)),
+    (f) => f.path === currentPath || (kindMatches(f, filters.kind) && (!filters.ext || fileExt(f.path) === filters.ext) && !(filters.hideSkim && f.skim)),
   );
 }
 
@@ -27,6 +27,7 @@ export function filterCounts(files: FileFacts[]): Record<FileFilter, number> {
     unviewed: files.filter((f) => kindMatches(f, "unviewed")).length,
     findings: files.filter((f) => kindMatches(f, "findings")).length,
     comments: files.filter((f) => kindMatches(f, "comments")).length,
+    focus: files.filter((f) => kindMatches(f, "focus")).length,
   };
 }
 

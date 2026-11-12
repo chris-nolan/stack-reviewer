@@ -8,7 +8,10 @@ import { useChecks, useConversation, useFiles, useSetViewed, useStack, useThread
 import { useSession, useSource } from "../../app/session";
 import { AgentDock, type AgentRequest } from "../../agent/AgentDock";
 import { checkFailurePrompt } from "../../agent/session";
-import { registerStackBridge } from "./stackBridge";
+import { lastAgent, useGuideRun } from "../../agent/guideRun";
+import { guideTargets, rankOf } from "../../lib/guide";
+import { TierMeter } from "../../ui/guide";
+import { FocusChecklist, GuideLine, type FocusItem } from "./GuideReview";
 import { changeStarts, clampRange, parsePatch, rangeLabel, validRange } from "../../lib/diff";
 import { plainText, splitConventional, stripStackBoilerplate, summarize } from "../../lib/markdown";
 import type { FileChange, Layer, RepoRef, ReviewEvent, Stack } from "../../lib/model";
@@ -68,6 +71,12 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const key = prKey(repo, layer.pr.number);
   const review = useReviewState(key);
   const me = viewer?.login ?? "";
+  const guide = useGuideRun(stack);
+  const lg = guide.doc.layers[layer.pr.number];
+  const lgStale = !!lg && lg.headSha !== layer.pr.headSha;
+  const lgRank = rankOf(guide.doc.stack?.ranking, layer.pr.number);
+  const guideChanged = useMemo(() => { const t = guideTargets(guide.doc, stack.layers); return new Set([...t.stale, ...t.missing, ...t.removed]).size; }, [guide.doc, stack.layers]);
+  const focusItems: FocusItem[] = useMemo(() => (lg?.focus ?? []).map((f, i) => ({ ...f, n: i + 1, done: (review.focusDone ?? []).includes(f.id) })), [lg, review.focusDone]);
   const myReview = layer.pr.latestReviews.find((r) => r.author.toLowerCase() === me.toLowerCase());
   const canSince = layer.mine === "stale" && !!myReview?.commit;
 
@@ -142,6 +151,14 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const threadsHere = (threadsQ.data ?? []).filter((t) => t.path === current?.path);
   const draftsHere = review.drafts.filter((d) => d.path === current?.path);
   const openFindings = review.findings.filter((f) => f.status === "open");
+  // Focus ranges in this file. On a guide that's out of date, only ranges still valid in the current diff.
+  const focusHere = useMemo(() => {
+    if (mode !== "layer" || !current) return [];
+    const here = focusItems.filter((f) => f.path === current.path);
+    if (!lgStale) return here;
+    const rows = parsePatch(current.patch);
+    return here.filter((f) => validRange(rows, f.startLine ?? f.line, f.line));
+  }, [focusItems, current, mode, lgStale]);
   const notesHere = findingsHere.length + threadsHere.length + draftsHere.filter((d) => d.source === "me").length;
   const [marginPinned, setMarginPinned] = useState(() => local.get("marginPinned", false));
   useEffect(() => local.set("marginPinned", marginPinned), [marginPinned]);
@@ -154,17 +171,20 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     openFindings: review.findings.filter((x) => x.path === f.path && x.status === "open").length,
     openThreads: (threadsQ.data ?? []).filter((t) => t.path === f.path && !t.isResolved).length,
     drafts: review.drafts.filter((d) => d.path === f.path).length,
-  })), [ordered, viewedByPath, review.findings, review.drafts, threadsQ.data]);
+    focus: focusItems.filter((x) => x.path === f.path).length,
+    skim: lg?.skim.some((x) => x.path === f.path) ?? false,
+  })), [ordered, viewedByPath, review.findings, review.drafts, threadsQ.data, focusItems, lg]);
   const counts = useMemo(() => filterCounts(facts), [facts]);
   const extChips = useMemo(() => extensionChips(ordered), [ordered]);
   const navFiles = useMemo(() => {
-    const keep = new Set(applyFileFilters(facts, filters, current?.path).map((x) => x.path));
+    const eff = !lg && (filters.kind === "focus" || filters.hideSkim) ? { ...filters, kind: filters.kind === "focus" ? "all" as const : filters.kind, hideSkim: false } : filters;
+    const keep = new Set(applyFileFilters(facts, eff, current?.path).map((x) => x.path));
     return ordered.filter((f) => keep.has(f.path));
-  }, [facts, filters, current?.path, ordered]);
+  }, [facts, filters, current?.path, ordered, lg]);
   const navIdx = current ? navFiles.indexOf(current) : -1;
   const setKind = (kind: FileFilter) => setFilters((f) => ({ ...f, kind }));
   const setExt = (ext: string | null) => setFilters((f) => ({ ...f, ext: f.ext === ext ? null : ext }));
-  const filtered = filters.kind !== "all" || (filters.ext != null && extChips.length > 0);
+  const filtered = filters.kind !== "all" || !!filters.hideSkim || (filters.ext != null && extChips.length > 0);
   const prev = stack.layers[layer.index - 2] ?? null;
   const next = stack.layers[layer.index] ?? null;
 
@@ -195,19 +215,32 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     if (f) selectFile(f.path, f.line);
   };
 
-  // Agent tools for this stack. Registered per stack and kept after leaving the screen, so an
-  // agent still working (perhaps on another layer) writes to the right place.
-  const stackRef = useRef(stack);
-  stackRef.current = stack;
-  useEffect(() => {
-    registerStackBridge(`${repoKey(repo)}#${stack.key}`, source, qc, () => stackRef.current);
-  }, [repo, stack.key, source, qc]);
+  // Agent tools for this stack are registered by useGuideRun (via useStackAgent), per stack and kept
+  // after leaving the screen, so an agent still working writes to the right place.
+
+  const jumpFocus = (f: FocusItem) => { setMode("layer"); selectFile(f.path, f.startLine ?? f.line); };
+  const tickFocus = (id: string) => reviewStore.setFocusDone(key, id, !(review.focusDone ?? []).includes(id));
+  /** Next focus area after the current file and line, in file order; wraps round to the first. */
+  const nextFocusArea = () => {
+    const order = (f: FocusItem) => [ordered.findIndex((x) => x.path === f.path), f.startLine ?? f.line] as const;
+    const list = focusItems.filter((f) => order(f)[0] >= 0).sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1] - order(b)[1]);
+    if (!list.length) return;
+    const ci = current ? ordered.indexOf(current) : -1;
+    const cl = focusLine ?? 0;
+    jumpFocus(list.find((f) => { const [fi, l] = order(f); return fi > ci || (fi === ci && l > cl); }) ?? list[0]);
+  };
+  const askAuthor = (q: string) => reviewStore.setSummary(key, [review.summary?.trim(), `Question for the author: ${q}`].filter(Boolean).join("\n\n"));
+  const asked = new Set((lg?.questions ?? []).filter((q) => review.summary?.includes(`Question for the author: ${q}`)));
+  const focusDone = focusItems.filter((f) => f.done).length;
 
   // Palette commands for this screen.
   const toggleRail = () => (railOpen ? (setRailOpen(false), setRailForced(false)) : (setRailOpen(true), setRailForced(true)));
   const commands: Command[] = [
     { id: "r-agent", group: "Actions", title: dockOpen ? "Hide agent panel" : "Show agent panel", shortcut: "a", keywords: "toggle", run: () => setDockOpen((o) => !o) },
     { id: "r-findings", group: "Actions", title: "Open findings", hint: review.findings.length ? `${openFindings.length} to triage` : "none yet", keywords: "agent triage", run: () => setFindingsOpen(true) },
+    { id: "r-guide", group: "Actions", title: guide.doc.stack ? "Re-run the guide…" : "Guide me…", keywords: "guide agent summary complexity", run: () => { local.set("guideLaunch", `${repoKey(repo)}#${stack.key}`); go({ name: "overview", repo, stackKey: stack.key }); } },
+    ...(guideChanged && guide.doc.run?.status !== "running" ? [{ id: "r-guide-refresh", group: "Actions" as const, title: "Refresh guide", hint: `${guideChanged} out of date`, keywords: "guide stale", run: () => void guide.start({ ...lastAgent(), mode: "refresh" }) }] : []),
+    ...(focusItems.length ? [{ id: "r-focus", group: "Actions" as const, title: "Next focus area", hint: `${focusDone}/${focusItems.length} ticked`, shortcut: ".", keywords: "guide", run: nextFocusArea }] : []),
     { id: "r-finish", group: "Actions", title: "Finish layer…", shortcut: "f", keywords: "submit review approve", run: () => setFinishOpen(true) },
     ...(current && mode === "layer" ? [{ id: "r-viewed", group: "Actions" as const, title: current.viewed ? "Mark file not viewed" : "Mark file viewed", hint: current.path.split("/").pop(), shortcut: "v", run: () => setViewed.mutate({ path: current.path, viewed: !current.viewed }) }] : []),
     { id: "r-layout", group: "Actions", title: layout === "unified" ? "Switch to split diff" : "Switch to unified diff", keywords: "layout side by side", run: () => setLayout((l) => (l === "unified" ? "split" : "unified")) },
@@ -237,6 +270,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     }
     else if (k === "c" && focusLine != null) { setComposer({ start: focusLine, end: focusLine }); setAnchorLine(focusLine); }
     else if (k === "f") setFinishOpen(true);
+    else if (k === ".") nextFocusArea();
     else if (k === "n" || k === "p") {
       if (!current) return;
       const starts = changeStarts(parsePatch(current.patch));
@@ -331,21 +365,28 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                       </span>
                     )}
                     <span className="spacer" />
+                    {guide.doc.layers[l.pr.number] && <TierMeter tier={guide.doc.layers[l.pr.number].tier} size={manyLayers ? 9 : 11} dim={guide.doc.layers[l.pr.number].headSha !== l.pr.headSha} />}
                     <span title={CHECK_STYLE[l.pr.checks].word} aria-label={CHECK_STYLE[l.pr.checks].word} style={{ color: CHECK_STYLE[l.pr.checks].color, fontSize: 12 }}>{CHECK_STYLE[l.pr.checks].glyph}</span>
                   </button>
                 );
               })}
             </div>
+            {focusItems.length > 0 && <FocusChecklist items={focusItems} stale={lgStale} onJump={jumpFocus} onTick={(f) => tickFocus(f.id)} />}
             <div style={{ borderTop: "1px solid var(--border)", padding: "12px 14px 6px", display: "flex", justifyContent: "space-between" }}>
               <span className="label">Files · reading order</span>
               <span className="muted" style={{ fontSize: 12 }}>{viewedCount}/{layerFiles.length}</span>
             </div>
             <div role="group" aria-label="Filter files" className="chips-scroll" style={{ padding: "0 10px 6px", flexWrap: "wrap", overflowX: "visible" }}>
-              {([["all", "All"], ["unviewed", "Unviewed"], ["findings", "Findings"], ["comments", "Comments"]] as const).map(([k, label]) => (
+              {([["all", "All"], ["unviewed", "Unviewed"], ["findings", "Findings"], ["comments", "Comments"], ...(lg ? [["focus", "Focus"] as const] : [])] as const).map(([k, label]) => (
                 <button key={k} className="btn btn-chip" aria-pressed={filters.kind === k} onClick={() => setKind(k)} style={{ padding: "2px 8px", borderColor: filters.kind === k ? "var(--accent-soft-bd)" : undefined, background: filters.kind === k ? "var(--accent-soft-bg)" : undefined }}>
                   {label} {counts[k]}
                 </button>
               ))}
+              {lg && lg.skim.length > 0 && (
+                <button className="btn btn-chip" aria-pressed={!!filters.hideSkim} onClick={() => setFilters((f) => ({ ...f, hideSkim: !f.hideSkim }))} title="Hide the files the guide says are safe to skim" style={{ padding: "2px 8px", borderColor: filters.hideSkim ? "var(--agent-bd)" : undefined, background: filters.hideSkim ? "var(--agent-bg)" : undefined, color: filters.hideSkim ? "var(--agent)" : undefined }}>
+                  Hide skim {lg.skim.length}
+                </button>
+              )}
               {extChips.map((c) => (
                 <button key={c.ext} className="btn btn-chip mono" aria-pressed={filters.ext === c.ext} onClick={() => setExt(c.ext)} title={`Only .${c.ext} files`} style={{ padding: "2px 8px", borderColor: filters.ext === c.ext ? "var(--accent-soft-bd)" : undefined, background: filters.ext === c.ext ? "var(--accent-soft-bg)" : undefined }}>
                   .{c.ext} {c.count}
@@ -360,6 +401,8 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                 const nOpen = review.findings.filter((x) => x.path === f.path && x.status === "open").length;
                 const nThreads = (threadsQ.data ?? []).filter((t) => t.path === f.path && !t.isResolved).length;
                 const viewed = viewedByPath.get(f.path) ?? false;
+                const nFocus = focusItems.filter((x) => x.path === f.path).length;
+                const isSkim = lg?.skim.some((x) => x.path === f.path) ?? false;
                 return (
                   <div key={f.path} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 6, background: sel ? "var(--accent-soft-bg)" : "transparent" }}>
                     <input type="checkbox" checked={viewed} disabled={mode === "since" && !viewedByPath.has(f.path)} onChange={() => setViewed.mutate({ path: f.path, viewed: !viewed })} aria-label={`Mark ${f.path} viewed`} style={{ accentColor: "var(--accent)", margin: 0 }} />
@@ -367,6 +410,8 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                       <span className="mono" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.path.split("/").pop()}</span>
                       <span className="faint" style={{ fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.path.split("/").slice(0, -1).join("/")}</span>
                     </button>
+                    {nFocus > 0 && <span className="pill" style={{ fontSize: 10.5, padding: "0 6px", border: "1px solid var(--agent-bd)", background: "var(--agent-bg)", color: "var(--agent)" }} title={`${nFocus} focus ${nFocus === 1 ? "area" : "areas"} in this file`}>focus {nFocus}</span>}
+                    {isSkim && <span className="pill" style={{ fontSize: 10.5, padding: "0 6px", border: "1px solid var(--border-strong)", color: "var(--muted)" }} title={lg?.skim.find((x) => x.path === f.path)?.why}>skim</span>}
                     {nOpen > 0 && <span style={{ fontSize: 11, color: "var(--agent)" }} aria-label={`${nOpen} findings`}>●{nOpen}</span>}
                     {nThreads > 0 && <span style={{ fontSize: 11, color: "var(--accent-soft-fg)" }} aria-label={`${nThreads} threads`}>◆{nThreads}</span>}
                   </div>
@@ -434,6 +479,9 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                     {review.brief && <span className="muted"> · summary by the agent</span>}
                   </p>
                 ) : <p className="muted" style={{ margin: 0 }}>No description. Ask the agent to review this layer for a summary.</p>}
+                {lg && (
+                  <GuideLine guide={lg} rank={lgRank} stale={lgStale} questions={lg.questions} askedQuestions={asked} onAsk={askAuthor} onSkim={(p2) => { setMode("layer"); selectFile(p2); }} />
+                )}
                 {fullBody.length > summaryText.length + 20 && (
                   <button className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setShowBody((v) => !v)}>{showBody ? "Show summary" : "Full description"}</button>
                 )}
@@ -500,7 +548,8 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                         newRef={layer.pr.headSha}
                         oldRef={mode === "since" ? myReview?.commit ?? undefined : layer.pr.baseSha}
                         layout={layout}
-                        marks={{ findings: findingsHere, threads: threadsHere, drafts: draftsHere }}
+                        marks={{ findings: findingsHere, threads: threadsHere, drafts: draftsHere, focus: focusHere }}
+                        onTickFocus={tickFocus}
                         focusLine={focusLine}
                         composer={composer}
                         anchorLine={anchorLine}
@@ -537,9 +586,9 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
             <div aria-hidden="true" style={{ display: width < 1280 ? "none" : undefined, width: 120, height: 6, borderRadius: 3, background: "#252a31", overflow: "hidden" }}>
               <div style={{ width: `${layerFiles.length ? (viewedCount / layerFiles.length) * 100 : 0}%`, height: 6, background: "var(--accent)" }} />
             </div>
-            <span className="muted shrink">{viewedCount}/{layerFiles.length} viewed{openFindings.length ? ` · ${openFindings.length} to triage` : ""}</span>
+            <span className="muted shrink">{viewedCount}/{layerFiles.length} viewed{openFindings.length ? ` · ${openFindings.length} to triage` : ""}{focusItems.length ? <span style={{ color: "var(--agent)" }}> · focus {focusDone}/{focusItems.length}</span> : ""}</span>
             <div className="spacer" />
-            <span className="muted" style={{ fontSize: 12, display: width < 1280 ? "none" : undefined }} title="j/k file · v viewed · n/p next/previous change · c comment · [ ] layer · a agent · f finish">Shortcuts <span className="kbd">?</span></span>
+            <span className="muted" style={{ fontSize: 12, display: width < 1280 ? "none" : undefined }} title="j/k file · v viewed · n/p next/previous change · . next focus area · c comment · [ ] layer · a agent · f finish">Shortcuts <span className="kbd">?</span></span>
             <button className="btn btn-soft" onClick={() => setFinishOpen(true)}>Finish layer… <span className="kbd">f</span></button>
           </div>
         </main>
@@ -557,6 +606,8 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
           onEditDraft={(id, body) => reviewStore.editDraft(key, id, body)}
           onRemoveDraft={(id) => reviewStore.removeDraft(key, id)}
           onReviewFindings={() => { setFinishOpen(false); setFindingsOpen(true); }}
+          focusLeft={focusItems.filter((f) => !f.done)} focusTotal={focusItems.length}
+          onJumpFocus={(f) => { setFinishOpen(false); jumpFocus(f); }} onTickFocus={tickFocus}
         />
       )}
       {findingsOpen && (
