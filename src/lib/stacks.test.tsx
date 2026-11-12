@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStacks, myLayerState, resumeLayer, type NativeStack } from "./stacks";
+import { buildStacks, mergeability, mergeConversation, myLayerState, restackPairs, resumeLayer, type NativeStack } from "./stacks";
 import { parsePatch, toSplit, commentableLines } from "./diff";
 import type { PullRequest } from "./model";
 
@@ -335,5 +335,49 @@ describe("review store: findings to drafts", () => {
 
     reviewStore.removeDraft(key, d.id); // removing the comment puts the finding back to open
     expect(reviewStore.get(key).findings.find((x) => x.id === f.id)?.status).toBe("open");
+  });
+});
+
+describe("mergeability", () => {
+  const base = { state: "OPEN" as const, isDraft: false };
+  it("maps GitHub merge states to labels", () => {
+    expect(mergeability({ ...base, mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" })?.label).toBe("Conflicts");
+    expect(mergeability({ ...base, mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED" })?.label).toBe("Blocked");
+    expect(mergeability({ ...base, mergeable: "MERGEABLE", mergeStateStatus: "BEHIND" })?.label).toBe("Behind base");
+    expect(mergeability({ ...base, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN" })?.label).toBe("Ready");
+  });
+  it("is null when unknown, missing or not open", () => {
+    expect(mergeability({ ...base, mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })).toBeNull();
+    expect(mergeability(base)).toBeNull();
+    expect(mergeability({ state: "MERGED", isDraft: false, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN" })).toBeNull();
+  });
+});
+
+describe("restackPairs", () => {
+  it("pairs each open layer with the head of the layer below", () => {
+    const [stack] = buildStacks(repo, [pr(1, "main", "a"), pr(2, "a", "b"), pr(3, "b", "c")], [], "me");
+    expect(restackPairs(stack)).toEqual([
+      { layer: 2, lowerSha: "sha1", upperSha: "sha2" },
+      { layer: 3, lowerSha: "sha2", upperSha: "sha3" },
+    ]);
+  });
+  it("skips layers whose lower or own PR isn't open", () => {
+    const [stack] = buildStacks(repo, [pr(1, "main", "a"), pr(2, "a", "b"), pr(3, "b", "c")], [], "me");
+    stack.layers[0].pr.state = "MERGED";
+    expect(restackPairs(stack).map((p) => p.layer)).toEqual([3]);
+  });
+});
+
+describe("mergeConversation", () => {
+  it("drops empty review bodies and sorts oldest first", () => {
+    const out = mergeConversation(
+      [{ id: "c", author: "a", body: "late", createdAt: "2026-11-03T00:00:00Z" }],
+      [
+        { id: "r1", author: "b", state: "APPROVED", body: "", createdAt: "2026-11-01T00:00:00Z" },
+        { id: "r2", author: "b", state: "COMMENTED", body: "early", createdAt: "2026-11-02T00:00:00Z" },
+      ],
+    );
+    expect(out.map((e) => e.id)).toEqual(["r2", "c"]);
+    expect(out[1].kind).toBe("comment");
   });
 });

@@ -1,6 +1,6 @@
 // Builds stacks from GitHub native stack records plus base→head inference.
 
-import type { ChecksState, Layer, MyLayerState, PullRequest, RepoRef, Stack } from "./model";
+import type { ChecksState, ConversationEntry, Layer, MyLayerState, PullRequest, RepoRef, Stack } from "./model";
 
 /** A native stack as returned by GET /repos/{owner}/{repo}/stacks (public preview). */
 export type NativeStack = {
@@ -173,4 +173,42 @@ export function progressLabel(stack: Stack, me: string): string {
 
 export function needsMe(stack: Stack): boolean {
   return stack.layers.some((l) => l.pr.state === "OPEN" && (l.mine === "turn" || l.mine === "stale"));
+}
+
+/** Pairs to compare to find layers that don't contain the head of the layer below (open layers above the first). */
+export function restackPairs(stack: Stack): { layer: number; lowerSha: string; upperSha: string }[] {
+  const out: { layer: number; lowerSha: string; upperSha: string }[] = [];
+  stack.layers.forEach((l, i) => {
+    const lower = stack.layers[i - 1];
+    if (lower && l.pr.state === "OPEN" && lower.pr.state === "OPEN") out.push({ layer: l.index, lowerSha: lower.pr.headSha, upperSha: l.pr.headSha });
+  });
+  return out;
+}
+
+export type Mergeability = { label: string; tone: "ok" | "warn" | "bad" | "muted"; hint: string };
+
+/** Short label for GitHub's mergeable/mergeStateStatus, or null when unknown or not applicable. */
+export function mergeability(pr: Pick<PullRequest, "state" | "isDraft" | "mergeable" | "mergeStateStatus">): Mergeability | null {
+  if (pr.state !== "OPEN") return null;
+  if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") return { label: "Conflicts", tone: "bad", hint: "This branch has merge conflicts with its base." };
+  switch (pr.mergeStateStatus) {
+    case "BLOCKED": return { label: "Blocked", tone: "warn", hint: "Required reviews or checks are missing." };
+    case "BEHIND": return { label: "Behind base", tone: "warn", hint: "The base branch has new commits." };
+    case "DRAFT": return { label: "Draft", tone: "muted", hint: "Draft pull requests can't be merged." };
+    case "UNSTABLE": return { label: "Checks failing", tone: "warn", hint: "Mergeable, but some non-required checks fail." };
+    case "CLEAN": case "HAS_HOOKS": return { label: "Ready", tone: "ok", hint: "No conflicts and requirements are met." };
+    default: return pr.mergeable === "MERGEABLE" ? { label: "No conflicts", tone: "ok", hint: "No conflicts." } : null;
+  }
+}
+
+/** Merge top-level comments and review summaries (skipping empty review bodies), oldest first. */
+export function mergeConversation(
+  comments: { id: string; author: string; body: string; createdAt: string }[],
+  reviews: { id: string; author: string; state: string; body: string; createdAt: string }[],
+): ConversationEntry[] {
+  const all: ConversationEntry[] = [
+    ...comments.map((c) => ({ ...c, kind: "comment" as const, state: null })),
+    ...reviews.map((r) => ({ ...r, kind: "review" as const })),
+  ];
+  return all.filter((e) => e.body?.trim()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
 }

@@ -45,6 +45,22 @@ export type PullRequest = {
   /** Latest review per author: login → { state, commit } */
   latestReviews: { author: string; state: string; commit: string | null }[];
   assignees: string[];
+  labels?: { name: string; color: string }[];
+  /** GitHub's mergeability: MERGEABLE, CONFLICTING or UNKNOWN. */
+  mergeable?: string;
+  /** GitHub's merge state: CLEAN, BLOCKED, BEHIND, DIRTY, UNSTABLE, HAS_HOOKS, DRAFT, UNKNOWN. */
+  mergeStateStatus?: string;
+};
+
+/** A top-level PR comment or a review summary that has a body. */
+export type ConversationEntry = {
+  id: string;
+  kind: "comment" | "review";
+  author: string;
+  /** Review state (APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED); null for plain comments. */
+  state: string | null;
+  body: string;
+  createdAt: string;
 };
 
 export type Layer = {

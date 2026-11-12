@@ -1,7 +1,7 @@
 // The data-source contract the UI talks to. Implemented by GitHub (real) and fixtures (demo/dev).
 
 import type {
-  CheckRun, FileChange, PullRequest, RepoRef, ReviewEvent, ReviewThread, Stack, Viewer,
+  CheckRun, ConversationEntry, FileChange, PullRequest, RepoRef, ReviewEvent, ReviewThread, Stack, Viewer,
 } from "./model";
 
 export type Inbox = {
@@ -38,6 +38,12 @@ export interface DataSource {
   /** Token for git operations in the desktop app; null for demo data. */
   gitToken(): string | null;
   threads(repo: RepoRef, number: number): Promise<ReviewThread[]>;
+  /** Top-level comments and review summaries with a body, oldest first. */
+  conversation(repo: RepoRef, number: number): Promise<ConversationEntry[]>;
+  /** Post a top-level comment on the PR. */
+  postComment(repo: RepoRef, number: number, body: string): Promise<void>;
+  /** True when `upperSha` does not contain `lowerSha` (the layer needs a restack). */
+  behindBase(repo: RepoRef, lowerSha: string, upperSha: string): Promise<boolean>;
   checks(repo: RepoRef, sha: string): Promise<CheckRun[]>;
   jobLog(repo: RepoRef, jobId: number): Promise<string>;
   rerunJob(repo: RepoRef, jobId: number): Promise<void>;

@@ -1,10 +1,10 @@
 // GitHub implementation of DataSource: GraphQL for PR metadata, REST for stacks, files and checks.
 
 import type {
-  CheckRun, ChecksState, FileChange, PullRequest, RepoRef, ReviewThread, Stack, Viewer,
+  CheckRun, ChecksState, ConversationEntry, FileChange, PullRequest, RepoRef, ReviewThread, Stack, Viewer,
 } from "./model";
 import type { DataSource, Inbox, ReviewSubmission } from "./source";
-import { buildStacks, needsMe, type NativeStack } from "./stacks";
+import { buildStacks, mergeConversation, needsMe, type NativeStack } from "./stacks";
 import { httpGetText } from "./platform";
 
 const API = "https://api.github.com";
@@ -26,6 +26,8 @@ const PR_FIELDS = `
   assignees(first: 10) { nodes { login } }
   reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
   latestReviews(first: 30) { nodes { author { login } state commit { oid } } }
+  labels(first: 20) { nodes { name color } }
+  mergeable mergeStateStatus
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
 `;
 
@@ -38,6 +40,8 @@ type GqlPr = {
   assignees: { nodes: { login: string }[] };
   reviewRequests: { nodes: { requestedReviewer: { login?: string; slug?: string } | null }[] };
   latestReviews: { nodes: { author: { login: string } | null; state: string; commit: { oid: string } | null }[] };
+  labels?: { nodes: { name: string; color: string }[] };
+  mergeable?: string; mergeStateStatus?: string;
   commits: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] };
 };
 
@@ -66,6 +70,8 @@ function toPr(p: GqlPr): PullRequest {
       author: r.author?.login ?? "ghost", state: r.state, commit: r.commit?.oid ?? null,
     })),
     assignees: p.assignees.nodes.map((a) => a.login),
+    labels: (p.labels?.nodes ?? []).map((l) => ({ name: l.name, color: l.color })),
+    mergeable: p.mergeable, mergeStateStatus: p.mergeStateStatus,
   };
 }
 
@@ -349,6 +355,34 @@ export class GitHubSource implements DataSource {
       id: t.id, path: t.path, line: t.line ?? t.originalLine, isResolved: t.isResolved, isOutdated: t.isOutdated,
       comments: t.comments.nodes.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, author: c.author?.login ?? "ghost" })),
     }));
+  }
+
+  async conversation(repo: RepoRef, number: number): Promise<ConversationEntry[]> {
+    type A = { login: string } | null;
+    type D = { repository: { pullRequest: {
+      comments: { nodes: { id: string; body: string; createdAt: string; author: A }[] };
+      reviews: { nodes: { id: string; body: string; state: string; createdAt: string; submittedAt: string | null; author: A }[] };
+    } | null } | null };
+    const d = await this.gql<D>(
+      `query($owner: String!, $name: String!, $n: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $n) {
+        comments(first: 100) { nodes { id body createdAt author { login } } }
+        reviews(first: 50) { nodes { id body state createdAt submittedAt author { login } } } } } }`,
+      { owner: repo.owner, name: repo.repo, n: number },
+    );
+    const pr = d.repository?.pullRequest;
+    return mergeConversation(
+      (pr?.comments.nodes ?? []).map((c) => ({ id: c.id, author: c.author?.login ?? "ghost", body: c.body, createdAt: c.createdAt })),
+      (pr?.reviews.nodes ?? []).map((r) => ({ id: r.id, author: r.author?.login ?? "ghost", state: r.state, body: r.body, createdAt: r.submittedAt ?? r.createdAt })),
+    );
+  }
+
+  async postComment(repo: RepoRef, number: number, body: string): Promise<void> {
+    await this.rest(`/repos/${repo.owner}/${repo.repo}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body }) });
+  }
+
+  async behindBase(repo: RepoRef, lowerSha: string, upperSha: string): Promise<boolean> {
+    const c = await this.rest<{ behind_by: number }>(`/repos/${repo.owner}/${repo.repo}/compare/${lowerSha}...${upperSha}?per_page=1`);
+    return c.behind_by > 0;
   }
 
   async checks(repo: RepoRef, sha: string): Promise<CheckRun[]> {

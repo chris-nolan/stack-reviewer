@@ -1,7 +1,7 @@
 // Replays a captured snapshot of real GitHub data (see scripts/snapshot.ts). Dev only: writes
 // (viewed, replies, reviews) are applied in memory and never sent anywhere.
 
-import type { CheckRun, FileChange, PullRequest, RepoRef, ReviewThread, Stack, Viewer } from "./model";
+import type { CheckRun, ConversationEntry, FileChange, PullRequest, RepoRef, ReviewThread, Stack, Viewer } from "./model";
 import { repoKey } from "./model";
 import type { DataSource, Inbox, ReviewSubmission } from "./source";
 
@@ -16,6 +16,7 @@ export type Snapshot = {
   threads: Record<string, ReviewThread[]>;
   checks: Record<string, CheckRun[]>;
   logs: Record<string, string>;
+  conversations?: Record<string, ConversationEntry[]>;
   texts?: Record<string, string | null>;
 };
 
@@ -62,6 +63,9 @@ export class SnapshotSource implements DataSource {
   fileText(r: RepoRef, ref: string, path: string) { return Promise.resolve(this.s.texts?.[`${repoKey(r)}@${ref}:${path}`] ?? null); }
   gitToken() { return null; }
   threads(r: RepoRef, n: number) { return Promise.resolve(this.s.threads[`${repoKey(r)}#${n}`] ?? []); }
+  conversation(r: RepoRef, n: number) { return Promise.resolve(this.s.conversations?.[`${repoKey(r)}#${n}`] ?? []); }
+  postComment() { return Promise.resolve(); }
+  behindBase() { return Promise.resolve(false); }
   checks(r: RepoRef, sha: string) { return Promise.resolve(this.s.checks[`${repoKey(r)}@${sha}`] ?? []); }
   jobLog(r: RepoRef, id: number) {
     const l = this.s.logs[`${repoKey(r)}/${id}`];

@@ -102,3 +102,24 @@ export function useSetViewed(repo: RepoRef, pr: PullRequest | undefined) {
     onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(key, ctx.prev),
   });
 }
+
+export function useConversation(repo: RepoRef, number: number | undefined) {
+  const source = useSource();
+  return useQuery({
+    queryKey: ["conversation", source.kind, repoKey(repo), number],
+    queryFn: () => source.conversation(repo, number!),
+    enabled: number != null,
+    refetchInterval: MIN,
+  });
+}
+
+/** Whether `upperSha` lacks `lowerSha`. Cached by SHA pair: a commit's ancestry never changes. */
+export function useBehindBase(repo: RepoRef, lowerSha: string | undefined, upperSha: string | undefined, enabled = true) {
+  const source = useSource();
+  return useQuery({
+    queryKey: ["behindBase", source.kind, repoKey(repo), lowerSha, upperSha],
+    queryFn: () => source.behindBase(repo, lowerSha!, upperSha!),
+    enabled: enabled && !!lowerSha && !!upperSha,
+    staleTime: Infinity,
+  });
+}

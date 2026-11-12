@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { rememberRecent, useNav } from "../../app/nav";
-import { useChecks, useFiles, useSetViewed, useStack, useThreads } from "../../app/queries";
+import { useChecks, useConversation, useFiles, useSetViewed, useStack, useThreads } from "../../app/queries";
 import { useSession, useSource } from "../../app/session";
 import { AgentDock, type AgentRequest } from "../../agent/AgentDock";
 import { checkFailurePrompt } from "../../agent/session";
@@ -13,8 +13,9 @@ import { repoKey } from "../../lib/model";
 import { local } from "../../lib/platform";
 import { prKey, reviewStore, useReviewState } from "../../lib/reviewStore";
 import { Markdown } from "../../ui/Markdown";
-import { checkRunState, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing, Spinner } from "../../ui/bits";
-import { ChecksDialog, FinishDialog } from "./Dialogs";
+import { checkRunState, CHECK_STYLE, ChevronLeft, ErrorBox, LAYER_STYLE, LayerRing, Spinner } from "../../ui/bits";
+import { mergeability, restackPairs } from "../../lib/stacks";
+import { ChecksDialog, ConversationDialog, FinishDialog } from "./Dialogs";
 import { FindingsPanel } from "./FindingsPanel";
 import { DiffView } from "./DiffView";
 import { Margin } from "./Margin";
@@ -80,6 +81,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const [checksOpen, setChecksOpen] = useState<number | null | false>(false);
   const [agentRequest, setAgentRequest] = useState<AgentRequest | null>(null);
   const [findingsOpen, setFindingsOpen] = useState(false);
+  const [conversationOpen, setConversationOpen] = useState(false);
   const [path, setPath] = useState<string | null>(initialFile ?? null);
   const [focusLine, setFocusLine] = useState<number | null>(initialLine ?? null);
   const [composerLine, setComposerLine] = useState<number | null>(null);
@@ -100,6 +102,26 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const threadsQ = useThreads(repo, layer.pr.number);
   const checksQ = useChecks(repo, layer.pr.headSha);
   const setViewed = useSetViewed(repo, layer.pr);
+  const conversationQ = useConversation(repo, layer.pr.number);
+
+  // Layers that don't contain the head of the layer below: compared lazily, cached by SHA pair.
+  const pairs = useMemo(() => restackPairs(stack), [stack]);
+  const restackQs = useQueries({
+    queries: pairs.map((p) => ({
+      queryKey: ["behindBase", source.kind, repoKey(repo), p.lowerSha, p.upperSha],
+      queryFn: () => source.behindBase(repo, p.lowerSha, p.upperSha),
+      staleTime: Infinity,
+    })),
+  });
+  const needsRestack = new Set(pairs.filter((_, i) => restackQs[i]?.data === true).map((p) => p.layer));
+  const merge = mergeability(layer.pr);
+  const reviewers = useMemo(() => {
+    const reviewed = new Set(layer.pr.latestReviews.map((r) => r.author.toLowerCase()));
+    return [
+      ...layer.pr.latestReviews.filter((r) => r.state !== "PENDING").map((r) => ({ name: r.author, state: r.state })),
+      ...layer.pr.requestedReviewers.filter((r) => !reviewed.has(r.toLowerCase())).map((r) => ({ name: r, state: "REQUESTED" })),
+    ];
+  }, [layer.pr.latestReviews, layer.pr.requestedReviewers]);
 
   const layerFiles = filesQ.data ?? [];
   const shownFiles = mode === "since" ? sinceQ.data ?? [] : layerFiles;
@@ -156,7 +178,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement;
-    if (e.metaKey || e.ctrlKey || e.altKey || finishOpen || findingsOpen || checksOpen !== false) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || finishOpen || findingsOpen || conversationOpen || checksOpen !== false) return;
     if (t.closest("input, textarea, select, [contenteditable=true]")) return;
     const k = e.key;
     if (k === "j") markViewedAndNext();
@@ -247,7 +269,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                     data-current={sel || undefined}
                     onClick={() => goLayer(l)}
                     aria-current={sel ? "true" : undefined}
-                    title={`#${l.pr.number} ${l.pr.title} — ${s.word}`}
+                    title={`#${l.pr.number} ${l.pr.title} — ${s.word} · ${CHECK_STYLE[l.pr.checks].word}${needsRestack.has(l.index) ? " · needs restack" : ""}`}
                     style={{ display: "flex", gap: manyLayers ? 8 : 10, alignItems: "center", textAlign: "left", padding: manyLayers ? "4px 6px" : "7px 8px", borderRadius: 8, border: `1px solid ${sel ? "var(--accent-soft-bd)" : "transparent"}`, background: sel ? "var(--accent-soft-bg)" : "transparent", flex: "0 0 auto" }}
                   >
                     <LayerRing layer={l} size={manyLayers ? 20 : 22} />
@@ -256,9 +278,11 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                     ) : (
                       <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                         <span style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.text}</span>
-                        <span style={{ fontSize: 12, color: s.fg }}>#{l.pr.number} · {s.word}</span>
+                        <span style={{ fontSize: 12, color: s.fg }}>#{l.pr.number} · {s.word}{needsRestack.has(l.index) && <span style={{ color: "var(--warn)" }}> · needs restack</span>}</span>
                       </span>
                     )}
+                    <span className="spacer" />
+                    <span title={CHECK_STYLE[l.pr.checks].word} aria-label={CHECK_STYLE[l.pr.checks].word} style={{ color: CHECK_STYLE[l.pr.checks].color, fontSize: 12 }}>{CHECK_STYLE[l.pr.checks].glyph}</span>
                   </button>
                 );
               })}
@@ -293,7 +317,12 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
             <button className="btn btn-icon" onClick={() => { setRailOpen(true); setRailForced(true); }} aria-label="Expand sidebar">›</button>
             {stack.layers.map((l) => (
               <button key={l.pr.number} className="rail-layer" data-current={l === layer || undefined} onClick={() => goLayer(l)} aria-label={`Layer ${l.index}: ${l.pr.title}`} aria-current={l === layer ? "true" : undefined} style={{ border: 0, background: "transparent", padding: 0 }}>
-                <LayerRing layer={l} size={28} outline={l === layer} />
+                <span style={{ position: "relative", display: "inline-flex" }} title={`#${l.pr.number} — ${CHECK_STYLE[l.pr.checks].word}${needsRestack.has(l.index) ? " · needs restack" : ""}`}>
+                  <LayerRing layer={l} size={28} outline={l === layer} />
+                  <span aria-hidden="true" style={{ position: "absolute", right: -5, bottom: -4, fontSize: 10, lineHeight: 1, fontWeight: 700, color: CHECK_STYLE[l.pr.checks].color, background: "var(--chrome)", borderRadius: 6, padding: "1px 2px" }}>{CHECK_STYLE[l.pr.checks].glyph}</span>
+                  {needsRestack.has(l.index) && <span aria-hidden="true" style={{ position: "absolute", left: -5, top: -5, fontSize: 11, lineHeight: 1, color: "var(--warn)", background: "var(--chrome)", borderRadius: 6 }}>⟳</span>}
+                </span>
+                <span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden" }}>{CHECK_STYLE[l.pr.checks].word}{needsRestack.has(l.index) ? ", needs restack" : ""}</span>
               </button>
             ))}
           </aside>
@@ -305,6 +334,8 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
               <span className="muted">Layer {layer.index} of {stack.layers.length} · <a href={layer.pr.url} target="_blank" rel="noreferrer">#{layer.pr.number}</a> · {layer.pr.author}</span>
               <span className="pill" style={{ background: LAYER_STYLE[layer.mine].bg, color: LAYER_STYLE[layer.mine].fg }}>{LAYER_STYLE[layer.mine].word}</span>
               {layer.pr.isDraft && <span className="pill" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>Draft PR</span>}
+              {merge && <span className="pill" title={merge.hint} style={{ background: `var(--${merge.tone === "muted" ? "surface-2" : merge.tone === "ok" ? "ok-bg" : merge.tone === "bad" ? "del-bg" : "warn-bg, #2f2914"})`, color: `var(--${merge.tone === "muted" ? "muted" : merge.tone === "ok" ? "ok-fg" : merge.tone === "bad" ? "bad-fg" : "warn-fg"})` }}>{merge.label}</span>}
+              {(layer.pr.labels ?? []).map((lb) => <span key={lb.name} className="pill" style={{ background: "var(--surface-2)", border: `1px solid #${lb.color}`, color: "var(--text-2)" }}>{lb.name}</span>)}
               {canSince && (
                 <div role="group" aria-label="Diff range" style={{ display: "flex", border: "1px solid var(--border-strong)", borderRadius: 6, overflow: "hidden" }}>
                   <button className="btn-sm" style={{ border: 0, padding: "3px 9px", background: mode === "layer" ? "#232a35" : "transparent", color: mode === "layer" ? "var(--text)" : "var(--muted)" }} onClick={() => setMode("layer")}>Whole layer</button>
@@ -312,6 +343,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                 </div>
               )}
               <div className="spacer" />
+              <button className="btn btn-sm" onClick={() => setConversationOpen(true)}>Conversation · {conversationQ.data?.length ?? "…"}</button>
               <button className="btn btn-sm" aria-expanded={briefOpen} onClick={() => setBriefOpen((o) => !o)}>{briefOpen ? "Collapse" : "Expand"}</button>
             </div>
             <h1 style={{ margin: 0, fontSize: 19, fontWeight: 600 }}>
@@ -320,6 +352,18 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
             </h1>
             {briefOpen && (
               <>
+                {needsRestack.has(layer.index) && (
+                  <div style={{ color: "var(--warn-fg)", fontSize: 13 }}>⟳ Needs restack: this layer doesn't contain the latest head of layer {layer.index - 1}, so its diff may not match what lands.</div>
+                )}
+                {reviewers.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                    <span className="muted">Reviewers</span>
+                    {reviewers.map((r) => {
+                      const st = r.state === "APPROVED" ? { g: "✓", c: "var(--ok)", w: "approved" } : r.state === "CHANGES_REQUESTED" ? { g: "✕", c: "var(--bad)", w: "requested changes" } : r.state === "REQUESTED" ? { g: "○", c: "var(--muted)", w: "review requested" } : r.state === "DISMISSED" ? { g: "–", c: "var(--muted)", w: "dismissed" } : { g: "●", c: "var(--accent-soft-fg)", w: "commented" };
+                      return <span key={r.name} className="pill" title={`${r.name}: ${st.w}`} style={{ background: "var(--surface-2)", color: "var(--text-2)" }}><span style={{ color: st.c }} aria-hidden="true">{st.g}</span> {r.name}<span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden" }}>, {st.w}</span></span>;
+                    })}
+                  </div>
+                )}
                 {showBody ? (
                   <div className="scroll" style={{ maxWidth: 900, maxHeight: 260, padding: "8px 12px", borderRadius: 8, background: "var(--surface-2)" }}><Markdown text={fullBodyMd} /></div>
                 ) : summaryText ? (
@@ -462,6 +506,16 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
           onStatus={(id, status, body) => reviewStore.setFindingStatus(key, id, status, body)}
           onEditDraft={(id, body) => reviewStore.editDraft(key, id, body)}
           onClose={() => setFindingsOpen(false)}
+        />
+      )}
+      {conversationOpen && (
+        <ConversationDialog
+          number={layer.pr.number}
+          entries={conversationQ.data ?? []}
+          loading={conversationQ.isPending}
+          error={conversationQ.error}
+          onPost={async (body) => { await source.postComment(repo, layer.pr.number, body); await conversationQ.refetch(); }}
+          onClose={() => setConversationOpen(false)}
         />
       )}
       {checksOpen !== false && checksQ.data && <ChecksDialog repo={repo} checks={checksQ.data} initial={checksOpen} onClose={() => setChecksOpen(false)} />}

@@ -1,7 +1,7 @@
 // In-memory demo data source (the "Rate limiting" stack from the UX prototype).
 // Used in a plain browser and for the "Try with demo data" option on the sign-in screen.
 
-import type { CheckRun, FileChange, PullRequest, RepoRef, ReviewThread, Stack, Viewer } from "./model";
+import type { CheckRun, ConversationEntry, FileChange, PullRequest, RepoRef, ReviewThread, Stack, Viewer } from "./model";
 import type { DataSource, Inbox, ReviewSubmission } from "./source";
 import { buildStacks } from "./stacks";
 
@@ -27,13 +27,16 @@ const PRS: PullRequest[] = [
   pr(413, "Wire limiter into request middleware", "alex-r/limiter-core", "alex-r/limiter-middleware", {
     body: "Mounts the token bucket from #412 as Express middleware, keyed by client IP. Limits come from the new `rateLimit` config block. Per-tenant limits follow in #415.",
     additions: 43, deletions: 1, changedFiles: 4, checks: "fail",
+    labels: [{ name: "rate-limiting", color: "1d76db" }, { name: "needs-tests", color: "d93f0b" }],
+    mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED", requestedReviewers: [ME, "priya-k"],
+    latestReviews: [{ author: "priya-k", state: "COMMENTED", commit: "sha413b" }],
   }),
   pr(415, "Per-tenant limits from config", "alex-r/limiter-middleware", "alex-r/tenant-limits", {
     body: "Looks limits up per tenant header, falling back to the global default.",
-    additions: 88, deletions: 21, changedFiles: 5, checks: "pending", requestedReviewers: [],
+    additions: 88, deletions: 21, changedFiles: 5, checks: "pending", requestedReviewers: [], mergeable: "CONFLICTING", mergeStateStatus: "DIRTY",
     latestReviews: [{ author: ME, state: "COMMENTED", commit: "sha415a" }],
   }),
-  pr(416, "Expose limiter metrics", "alex-r/tenant-limits", "alex-r/limiter-metrics", { additions: 57, deletions: 2, changedFiles: 3 }),
+  pr(416, "Expose limiter metrics", "alex-r/tenant-limits", "alex-r/limiter-metrics", { additions: 57, deletions: 2, changedFiles: 3, checks: "none", mergeable: "MERGEABLE", mergeStateStatus: "CLEAN", labels: [{ name: "observability", color: "0e8a16" }] }),
   pr(418, "Docs and Grafana dashboard", "alex-r/limiter-metrics", "alex-r/limiter-docs", { additions: 210, changedFiles: 2 }),
   pr(388, "Invoice export panel", "main", "priya-k/invoice-panel", { author: "priya-k", additions: 320, changedFiles: 9, updatedAt: ago(26) }),
   pr(389, "Invoice export: CSV column picker", "priya-k/invoice-panel", "priya-k/invoice-columns", { author: "priya-k", additions: 96, changedFiles: 3, updatedAt: ago(24) }),
@@ -79,6 +82,14 @@ const CHECKS: Record<number, CheckRun[]> = {
   ],
 };
 
+const CONVERSATION: Record<number, ConversationEntry[]> = {
+  413: [
+    { id: "IC1", kind: "comment", author: "alex-r", state: null, createdAt: ago(60), body: "Heads up: this mounts the limiter globally. Per-route overrides are out of scope until #415." },
+    { id: "R1", kind: "review", author: "priya-k", state: "COMMENTED", createdAt: ago(20), body: "Looks good overall. One question about the test: can we cover the **refill** path with fake timers?" },
+    { id: "IC2", kind: "comment", author: "priya-k", state: null, createdAt: ago(5), body: "Also, `req.ip` is the proxy address behind our load balancer, so every client may share a bucket.\n\nShould we key on `X-Forwarded-For`?" },
+  ],
+};
+
 const LOG = `2026-11-12T12:01:02.0000000Z ##[group]Run npm test
 2026-11-12T12:01:02.1000000Z > orders-api@1.4.0 test
 2026-11-12T12:01:02.1000000Z > jest
@@ -97,6 +108,7 @@ export class FixtureSource implements DataSource {
   readonly label = "demo";
   private viewedState = new Map<string, boolean>();
   private threadState = structuredClone(THREADS);
+  private conversationState = structuredClone(CONVERSATION);
 
   private all(): Stack[] {
     return buildStacks(repo, PRS, [], ME);
@@ -142,6 +154,13 @@ export class FixtureSource implements DataSource {
   }
   gitToken() { return null; }
   threads(_r: RepoRef, n: number) { return delay(this.threadState[n] ?? []); }
+  conversation(_r: RepoRef, n: number) { return delay([...(this.conversationState[n] ?? [])]); }
+  postComment(_r: RepoRef, n: number, body: string) {
+    (this.conversationState[n] ??= []).push({ id: crypto.randomUUID(), kind: "comment", author: ME, state: null, body, createdAt: new Date().toISOString() });
+    return delay(undefined, 200);
+  }
+  /** Demo: layer 416 doesn't contain the latest head of #415. */
+  behindBase(_r: RepoRef, _lower: string, upper: string) { return delay(upper === "sha416b", 200); }
   checks(_r: RepoRef, sha: string) {
     const p = PRS.find((x) => x.headSha === sha);
     return delay(p ? CHECKS[p.number] ?? [{ id: 9, name: "test", status: "completed", conclusion: "success", startedAt: null, completedAt: null, detailsUrl: null, isActions: true }] : []);

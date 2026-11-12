@@ -441,3 +441,20 @@ The working directory is a checkout of this layer's head commit. We may move thr
 
 Do not edit files, commit, push or post anything to GitHub.`;
 }
+
+export function reviewStackPrompt(layers: { index: number; number: number }[]): string {
+  const list = layers.map((l) => `layer ${l.index} (#${l.number})`).join(", ");
+  return `Review the whole stack with me, every open layer from the bottom up: ${list}.
+
+The working directory only has the current layer's head checked out, so read each layer's diff from git objects instead of the checkout.
+For each layer, bottom to top:
+1. Call get_review_context with that layer's \`pr\` number. It gives the layer's description, changed files, \`base_sha\` and \`head_sha\`.
+2. Read the layer's own changes with \`git diff <base_sha> <head_sha>\` (fetch first if a commit is missing: \`git fetch origin <head_sha>\`). Use \`git show <head_sha>:<path>\` for surrounding code. Layers below this one are already in its base.
+3. For each real problem (bugs, security, data loss, concurrency, missing error handling, misleading names, missing tests for risky logic) call add_finding with that layer's \`pr\`, anchored to a changed line. Skip style nitpicks. Prefer a few high-signal findings over many.
+4. Optionally call set_layer_brief with that layer's \`pr\` for a 2-3 sentence summary and reading order.
+Findings you record for other layers land on those layers, so always pass the right \`pr\`.
+
+Finish with a per-layer summary: what each layer does, what you flagged, and anything that needs a human decision. Mention problems that only show up across layers.
+
+Do not edit files, commit, push or post anything to GitHub.`;
+}

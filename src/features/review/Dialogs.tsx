@@ -5,7 +5,8 @@ import type { CheckRun, DraftComment, Layer, RepoRef, ReviewEvent } from "../../
 import { failureExcerpt } from "../../lib/logs";
 import { Markdown } from "../../ui/Markdown";
 import { DraftEditor } from "./Notes";
-import { checkRunState, CHECK_STYLE, ErrorBox, Spinner } from "../../ui/bits";
+import { checkRunState, CHECK_STYLE, ErrorBox, Spinner, timeAgo } from "../../ui/bits";
+import type { ConversationEntry } from "../../lib/model";
 
 export function Modal({ label, onClose, children, width = 560 }: { label: string; onClose: () => void; children: React.ReactNode; width?: number }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -171,6 +172,59 @@ export function ChecksDialog({ repo, checks, initial, onClose }: { repo: RepoRef
                 )}
             </>
           )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+const REVIEW_WORD: Record<string, string> = { APPROVED: "approved", CHANGES_REQUESTED: "requested changes", COMMENTED: "reviewed", DISMISSED: "review dismissed" };
+
+export function ConversationDialog({ number, entries, loading, error, onPost, onClose }: {
+  number: number; entries: ConversationEntry[]; loading: boolean; error: unknown; onPost: (body: string) => Promise<void>; onClose: () => void;
+}) {
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [postError, setPostError] = useState<unknown>(null);
+  const post = async () => {
+    setBusy(true);
+    setPostError(null);
+    try {
+      await onPost(body.trim());
+      setBody("");
+    } catch (e) {
+      setPostError(e);
+    }
+    setBusy(false);
+  };
+  return (
+    <Modal label={`Conversation on #${number}`} onClose={onClose} width={680}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <h2 style={{ margin: 0, fontSize: 16, flex: "1 1 auto" }}>Conversation · #{number}</h2>
+        <button className="btn btn-icon" onClick={onClose} aria-label="Close">✕</button>
+      </div>
+      {loading && <Spinner label="Loading conversation…" />}
+      {error != null && <ErrorBox error={error} />}
+      {!loading && !error && entries.length === 0 && <p className="muted" style={{ margin: 0 }}>No comments or review summaries yet.</p>}
+      <div className="scroll" style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: "44vh" }}>
+        {entries.map((e) => (
+          <article key={e.id} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline", marginBottom: 4 }}>
+              <strong>{e.author}</strong>
+              {e.kind === "review" && <span className="pill" style={{ background: "var(--surface-3)", color: e.state === "APPROVED" ? "var(--ok-fg)" : e.state === "CHANGES_REQUESTED" ? "var(--bad-fg)" : "var(--muted)" }}>{REVIEW_WORD[e.state ?? ""] ?? "reviewed"}</span>}
+              <span className="muted" style={{ fontSize: 12 }}>{timeAgo(e.createdAt)}</span>
+            </div>
+            <Markdown text={e.body} />
+          </article>
+        ))}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+        <label className="label" htmlFor="new-comment">New comment on the PR</label>
+        <textarea id="new-comment" value={body} onChange={(e) => setBody(e.target.value)} rows={3} className="input" placeholder="Leave a comment (Markdown supported). It is posted to GitHub when you press Comment." style={{ resize: "vertical" }} />
+        {postError != null && <ErrorBox error={postError} />}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn btn-primary" disabled={busy || !body.trim()} onClick={post}>{busy ? "Posting…" : "Comment"}</button>
         </div>
       </div>
     </Modal>

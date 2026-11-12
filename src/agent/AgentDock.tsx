@@ -6,7 +6,7 @@ import { invoke, isTauri, local } from "../lib/platform";
 import { AgentDot } from "../ui/bits";
 import { Markdown } from "../ui/Markdown";
 import { homeDir } from "@tauri-apps/api/path";
-import { checkFailurePrompt, getAgentSession, reviewLayerPrompt, useAgentSnapshot, type AgentSession, type ChatItem } from "./session";
+import { checkFailurePrompt, getAgentSession, reviewLayerPrompt, reviewStackPrompt, useAgentSnapshot, type AgentSession, type ChatItem } from "./session";
 import type { AgentSetting } from "./settings";
 import { useAgents } from "./useAgents";
 
@@ -100,6 +100,7 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
   const queued = !!request && handled.current !== request.id;
   const quick = [
     { label: `Review layer ${layer.index}`, run: () => send(reviewLayerPrompt(layer.index, stack.layers.length, layer.pr.number), `Review layer ${layer.index} (#${layer.pr.number})`) },
+    ...(stack.layers.filter((l) => l.pr.state === "OPEN").length > 1 ? [{ label: "Review whole stack", run: () => send(reviewStackPrompt(stack.layers.filter((l) => l.pr.state === "OPEN").map((l) => ({ index: l.index, number: l.pr.number }))), "Review the whole stack") }] : []),
     ...(layer.pr.checks === "fail" ? [{ label: "Why are checks failing?", run: () => send(checkFailurePrompt(layer.pr.number), "Why are checks failing?") }] : []),
     ...(currentFile ? [{ label: "Explain this file", run: () => send(`Explain the changes to ${currentFile} in #${layer.pr.number}: what they do and what a reviewer should check. Don't add findings unless something is wrong.`, `Explain ${currentFile.split("/").pop()}`) }] : []),
     { label: "Draft review summary", run: () => send(`Draft a short review summary for #${layer.pr.number} based on our discussion and the findings so far, and save it with set_review_summary. Keep it under 80 words.`, "Draft review summary") },
