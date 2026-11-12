@@ -6,7 +6,7 @@ import { useSession, useSource } from "../../app/session";
 import { AgentDock, type AgentRequest } from "../../agent/AgentDock";
 import { checkFailurePrompt } from "../../agent/session";
 import { registerStackBridge } from "./stackBridge";
-import { changeStarts, commentableLines, parsePatch } from "../../lib/diff";
+import { changeStarts, clampRange, parsePatch, rangeLabel, validRange } from "../../lib/diff";
 import { plainText, splitConventional, stripStackBoilerplate, summarize } from "../../lib/markdown";
 import type { FileChange, Layer, RepoRef, ReviewEvent, Stack } from "../../lib/model";
 import { repoKey } from "../../lib/model";
@@ -84,7 +84,9 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const [conversationOpen, setConversationOpen] = useState(false);
   const [path, setPath] = useState<string | null>(initialFile ?? null);
   const [focusLine, setFocusLine] = useState<number | null>(initialLine ?? null);
-  const [composerLine, setComposerLine] = useState<number | null>(null);
+  const [composer, setComposer] = useState<{ start: number; end: number } | null>(null);
+  // Where shift+c / shift-click ranges start: the last line plainly clicked or commented on.
+  const [anchorLine, setAnchorLine] = useState<number | null>(null);
 
   useEffect(() => local.set("layout", layout), [layout]);
   useEffect(() => local.set("railOpen", railPref), [railPref]);
@@ -138,7 +140,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const notesHere = findingsHere.length + threadsHere.length + draftsHere.filter((d) => d.source === "me").length;
   const [marginPinned, setMarginPinned] = useState(() => local.get("marginPinned", false));
   useEffect(() => local.set("marginPinned", marginPinned), [marginPinned]);
-  const showMargin = notesHere > 0 || marginPinned || composerLine != null;
+  const showMargin = notesHere > 0 || marginPinned || composer != null;
   const failingChecks = (checksQ.data ?? []).filter((c) => checkRunState(c) === "fail");
   const prev = stack.layers[layer.index - 2] ?? null;
   const next = stack.layers[layer.index] ?? null;
@@ -146,7 +148,8 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   const selectFile = useCallback((p: string, line: number | null = null) => {
     setPath(p);
     setFocusLine(line);
-    setComposerLine(null);
+    setComposer(null);
+    setAnchorLine(null);
   }, []);
 
   const goLayer = (l: Layer | null) => l && go({ name: "review", repo, stackKey: stack.key, layer: l.index });
@@ -187,7 +190,12 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
     else if (k === "a") setDockOpen((o) => !o);
     else if (k === "]") goLayer(next);
     else if (k === "[") goLayer(prev);
-    else if (k === "c" && focusLine != null) setComposerLine(focusLine);
+    else if ((k === "C" || (k === "c" && e.shiftKey)) && focusLine != null) {
+      const r = clampRange(parsePatch(current?.patch), anchorLine ?? focusLine, focusLine);
+      setComposer(r);
+      setAnchorLine((a) => a ?? focusLine);
+    }
+    else if (k === "c" && focusLine != null) { setComposer({ start: focusLine, end: focusLine }); setAnchorLine(focusLine); }
     else if (k === "f") setFinishOpen(true);
     else if (k === "n" || k === "p") {
       if (!current) return;
@@ -195,7 +203,7 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
       const cur = focusLine ?? 0;
       const target = k === "n" ? starts.find((n) => n > cur) ?? starts[0] : [...starts].reverse().find((n) => n < cur) ?? starts[starts.length - 1];
       if (target != null) setFocusLine(target);
-    } else if (k === "Escape") setComposerLine(null);
+    } else if (k === "Escape") setComposer(null);
     else return;
     e.preventDefault();
   };
@@ -206,11 +214,11 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
   }, []);
 
   const submit = async (event: ReviewEvent, body: string) => {
-    const byPath = new Map(layerFiles.map((f) => [f.path, commentableLines(parsePatch(f.patch))]));
-    const valid = review.drafts.filter((d) => byPath.get(d.path)?.has(d.line));
+    const byPath = new Map(layerFiles.map((f) => [f.path, parsePatch(f.patch)]));
+    const valid = review.drafts.filter((d) => validRange(byPath.get(d.path) ?? [], d.startLine ?? d.line, d.line));
     const orphan = review.drafts.filter((d) => !valid.includes(d));
-    const fullBody = [body, ...orphan.map((d) => `**${d.path}:${d.line}**\n${d.body}`)].filter(Boolean).join("\n\n---\n\n");
-    await source.submitReview(repo, layer.pr.number, { event, body: fullBody, commitId: layer.pr.headSha, comments: valid.map((d) => ({ path: d.path, line: d.line, body: d.body })) });
+    const fullBody = [body, ...orphan.map((d) => `**${d.path}${rangeLabel(d.line, d.startLine, ":")}**\n${d.body}`)].filter(Boolean).join("\n\n---\n\n");
+    await source.submitReview(repo, layer.pr.number, { event, body: fullBody, commitId: layer.pr.headSha, comments: valid.map((d) => ({ path: d.path, line: d.line, startLine: d.startLine != null && d.startLine < d.line ? d.startLine : undefined, body: d.body })) });
     reviewStore.clearDrafts(key);
     reviewStore.setSummary(key, "");
     await qc.invalidateQueries({ queryKey: ["stack"] });
@@ -440,11 +448,12 @@ function ReviewBody({ repo, stack, layer, file: initialFile, line: initialLine }
                         layout={layout}
                         marks={{ findings: findingsHere, threads: threadsHere, drafts: draftsHere }}
                         focusLine={focusLine}
-                        composerLine={composerLine}
-                        onFocusLine={setFocusLine}
-                        onOpenComposer={(l) => { setFocusLine(l); setComposerLine(l); }}
-                        onCloseComposer={() => setComposerLine(null)}
-                        onSaveComment={(l, body) => { reviewStore.addDraft(key, { path: current.path, line: l, body, source: "me" }); setComposerLine(null); }}
+                        composer={composer}
+                        anchorLine={anchorLine}
+                        onFocusLine={(l) => { setFocusLine(l); setAnchorLine(l); }}
+                        onOpenComposer={(s, e) => { setFocusLine(e); setComposer(s === e ? { start: s, end: e } : clampRange(parsePatch(current.patch), s, e)); setAnchorLine(s); }}
+                        onCloseComposer={() => setComposer(null)}
+                        onSaveComment={(s, e, body) => { reviewStore.addDraft(key, { path: current.path, line: e, startLine: s < e ? s : undefined, body, source: "me" }); setComposer(null); }}
                       />
                     </div>
                     {showMargin && <div style={{ flex: "0 0 290px", width: 290, minWidth: 0, overflow: "hidden", borderLeft: "1px solid var(--border)", minHeight: 0 }}>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildStacks, mergeability, mergeConversation, myLayerState, restackPairs, resumeLayer, type NativeStack } from "./stacks";
-import { parsePatch, toSplit, commentableLines } from "./diff";
+import { parsePatch, toSplit, commentableLines, validRange, clampRange, newSideLines, suggestionBlock, rangeLabel } from "./diff";
 import type { PullRequest } from "./model";
 
 const repo = { owner: "acme", repo: "api" };
@@ -379,5 +379,35 @@ describe("mergeConversation", () => {
     );
     expect(out.map((e) => e.id)).toEqual(["r2", "c"]);
     expect(out[1].kind).toBe("comment");
+  });
+});
+
+describe("range comments", () => {
+  const patch = "@@ -1,3 +1,4 @@\n a\n-b\n+B\n+B2\n c\n@@ -20,2 +21,2 @@\n x\n y";
+  const rows = parsePatch(patch);
+  it("accepts ranges inside one hunk, even across deleted lines", () => {
+    expect(validRange(rows, 1, 4)).toBe(true);
+    expect(validRange(rows, 2, 2)).toBe(true);
+  });
+  it("rejects ranges that span hunks, miss the diff or run backwards", () => {
+    expect(validRange(rows, 3, 21)).toBe(false);
+    expect(validRange(rows, 4, 6)).toBe(false);
+    expect(validRange(rows, 9, 10)).toBe(false);
+    expect(validRange(rows, 3, 2)).toBe(false);
+  });
+  it("clamps an invalid span to the clicked line", () => {
+    expect(clampRange(rows, 4, 2)).toEqual({ start: 2, end: 4 });
+    expect(clampRange(rows, 2, 21)).toEqual({ start: 21, end: 21 });
+  });
+  it("pre-fills suggestions with the new-side text", () => {
+    expect(newSideLines(rows, 2, 3)).toEqual(["B", "B2"]);
+    expect(newSideLines(rows, 4, 5)).toBeNull();
+    expect(suggestionBlock(["B", "B2"])).toBe("```suggestion\nB\nB2\n```");
+    expect(suggestionBlock(["```x```"])).toBe("````suggestion\n```x```\n````");
+  });
+  it("labels ranges", () => {
+    expect(rangeLabel(9, 4)).toBe("L4–9");
+    expect(rangeLabel(9)).toBe("L9");
+    expect(rangeLabel(9, 9, ":")).toBe(":9");
   });
 });

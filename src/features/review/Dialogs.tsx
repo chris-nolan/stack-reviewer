@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useJobLog } from "../../app/queries";
 import { useSource } from "../../app/session";
 import type { CheckRun, DraftComment, Layer, RepoRef, ReviewEvent } from "../../lib/model";
+import { rangeLabel } from "../../lib/diff";
 import { failureExcerpt } from "../../lib/logs";
 import { Markdown } from "../../ui/Markdown";
 import { DraftEditor } from "./Notes";
@@ -98,13 +99,13 @@ export function FinishDialog({
 
 function DraftList({ drafts, onEdit, onRemove }: { drafts: DraftComment[]; onEdit: (id: string, body: string) => void; onRemove: (id: string) => void }) {
   const [editing, setEditing] = useState<string | null>(null);
-  const sorted = [...drafts].sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+  const sorted = [...drafts].sort((a, b) => a.path.localeCompare(b.path) || (a.startLine ?? a.line) - (b.startLine ?? b.line) || a.line - b.line);
   return (
     <section aria-label="Comments to publish" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "34vh", overflow: "auto", padding: 2 }}>
       {sorted.map((d) => (
         <div key={d.id} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.path}>{d.path.split("/").pop()}:{d.line}</span>
+            <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.path}>{d.path.split("/").pop()}{rangeLabel(d.line, d.startLine, ":")}</span>
             <span className="pill" style={{ fontSize: 10.5, background: d.source === "agent" ? "var(--agent-bg)" : "var(--accent-soft-bg)", color: d.source === "agent" ? "var(--agent)" : "var(--accent-soft-fg)" }}>{d.source === "agent" ? "from agent" : "yours"}</span>
             <span className="spacer" />
             {editing !== d.id && <button className="btn btn-sm" onClick={() => setEditing(d.id)}>Edit</button>}

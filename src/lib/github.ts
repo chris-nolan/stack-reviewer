@@ -428,7 +428,7 @@ export class GitHubSource implements DataSource {
         commit_id: r.commitId,
         body: r.body || undefined,
         event: r.event,
-        comments: r.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })),
+        comments: r.comments.map((c) => (c.startLine != null && c.startLine < c.line ? { path: c.path, start_line: c.startLine, start_side: "RIGHT", line: c.line, side: "RIGHT", body: c.body } : { path: c.path, line: c.line, side: "RIGHT", body: c.body })),
       }),
     });
   }

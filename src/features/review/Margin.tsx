@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { rangeLabel } from "../../lib/diff";
 import type { DraftComment, Finding, ReviewThread } from "../../lib/model";
 import { timeAgo } from "../../ui/bits";
 import { DraftEditor, FindingCard } from "./Notes";
@@ -26,7 +27,7 @@ export function Margin(p: Props) {
   const notes: Note[] = [
     ...p.findings.map((f) => ({ kind: "finding" as const, line: f.line, f })),
     ...p.threads.map((t) => ({ kind: "thread" as const, line: t.line ?? 0, t })),
-    ...p.drafts.filter((d) => d.source === "me").map((d) => ({ kind: "draft" as const, line: d.line, d })),
+    ...p.drafts.filter((d) => d.source === "me").map((d) => ({ kind: "draft" as const, line: d.startLine ?? d.line, d })),
   ].sort((a, b) => a.line - b.line);
 
   return (
@@ -104,8 +105,8 @@ function DraftCard({ d, onFocus, onEditDraft, onRemoveDraft }: Props & { d: Draf
   const [editing, setEditing] = useState(false);
   return (
     <article style={{ padding: 10, borderRadius: 10, border: "1px solid var(--accent-soft-bd)", background: "#141b26", display: "flex", flexDirection: "column", gap: 6 }}>
-      <LineButton line={d.line} onFocus={onFocus}>
-        <span className="mono muted" style={{ fontSize: 12 }}>L{d.line} · your draft</span>
+      <LineButton line={d.startLine ?? d.line} onFocus={onFocus}>
+        <span className="mono muted" style={{ fontSize: 12 }}>{rangeLabel(d.line, d.startLine)} · your draft</span>
       </LineButton>
       {editing ? (
         <DraftEditor initial={d.body} onCancel={() => setEditing(false)} onSave={(body) => { onEditDraft(d.id, body); setEditing(false); }} />

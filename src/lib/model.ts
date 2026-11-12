@@ -118,7 +118,10 @@ export type Viewer = { login: string; name: string | null; avatarUrl: string; te
 export type DraftComment = {
   id: string;
   path: string;
+  /** Last line of the comment (the only line for a single-line comment). */
   line: number;
+  /** First line of a multi-line comment; absent (or equal to `line`) for a single line. */
+  startLine?: number;
   body: string;
   source: "me" | "agent";
   findingId?: string;

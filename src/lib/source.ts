@@ -15,7 +15,7 @@ export type ReviewSubmission = {
   event: ReviewEvent;
   body: string;
   commitId: string;
-  comments: { path: string; line: number; body: string }[];
+  comments: { path: string; line: number; startLine?: number; body: string }[];
 };
 
 export interface DataSource {

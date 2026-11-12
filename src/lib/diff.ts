@@ -44,6 +44,63 @@ export function commentableLines(rows: DiffRow[]): Set<number> {
   return s;
 }
 
+/** Maps each commentable new-side line to the index of the hunk it belongs to. */
+function hunkOfLine(rows: DiffRow[]): Map<number, number> {
+  const m = new Map<number, number>();
+  let hunk = -1;
+  for (const r of rows) {
+    if (r.kind === "hunk") hunk++;
+    else if ((r.kind === "add" || r.kind === "ctx") && r.newLine != null) m.set(r.newLine, hunk);
+  }
+  return m;
+}
+
+/**
+ * Whether a comment on new-side lines `start`..`end` can be posted as a GitHub range comment:
+ * every line is commentable (shown in the diff) and the whole range sits in one hunk.
+ * A single line is a range of one.
+ */
+export function validRange(rows: DiffRow[], start: number, end: number): boolean {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start > end) return false;
+  const hunks = hunkOfLine(rows);
+  const h = hunks.get(start);
+  if (h === undefined) return false;
+  for (let l = start; l <= end; l++) if (hunks.get(l) !== h) return false;
+  return true;
+}
+
+/** The range between two clicked lines (either order), or just `line` when the span isn't valid. */
+export function clampRange(rows: DiffRow[], anchor: number, line: number): { start: number; end: number } {
+  const start = Math.min(anchor, line);
+  const end = Math.max(anchor, line);
+  return validRange(rows, start, end) ? { start, end } : { start: line, end: line };
+}
+
+/** Current (new-side) text of lines `start`..`end`, or null if any of them isn't in the diff. */
+export function newSideLines(rows: DiffRow[], start: number, end: number): string[] | null {
+  const byLine = new Map<number, string>();
+  for (const r of rows) if ((r.kind === "add" || r.kind === "ctx") && r.newLine != null) byLine.set(r.newLine, r.text);
+  const out: string[] = [];
+  for (let l = start; l <= end; l++) {
+    const t = byLine.get(l);
+    if (t === undefined) return null;
+    out.push(t);
+  }
+  return out;
+}
+
+/** A fenced ```suggestion block holding `lines` (the fence grows if the text itself contains backticks). */
+export function suggestionBlock(lines: string[]): string {
+  const longest = Math.max(0, ...(lines.join("\n").match(/`+/g) ?? []).map((s) => s.length));
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${fence}suggestion\n${lines.join("\n")}\n${fence}`;
+}
+
+/** "L4" or "L4–9". Pass a different prefix (e.g. "file.ts:") for lists that span files. */
+export function rangeLabel(line: number, startLine?: number, prefix = "L"): string {
+  return startLine != null && startLine < line ? `${prefix}${startLine}–${line}` : `${prefix}${line}`;
+}
+
 /** New-side line numbers where each run of changes starts (for next/previous change). */
 export function changeStarts(rows: DiffRow[]): number[] {
   const out: number[] = [];

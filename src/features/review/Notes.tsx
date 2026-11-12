@@ -7,7 +7,16 @@ import { findingDraftBody } from "../../lib/reviewStore";
 import { SEVERITY_STYLE } from "../../ui/bits";
 import { Markdown } from "../../ui/Markdown";
 
-export function DraftEditor({ initial, saveLabel = "Save", onSave, onCancel }: { initial: string; saveLabel?: string; onSave: (body: string) => void; onCancel: () => void }) {
+export function DraftEditor({ initial, saveLabel = "Save", placeholder, extraActions, note, onSave, onCancel }: {
+  initial: string;
+  saveLabel?: string;
+  placeholder?: string;
+  /** Extra buttons next to Cancel; `append` adds text to the end of the comment. */
+  extraActions?: (api: { append: (text: string) => void }) => React.ReactNode;
+  note?: React.ReactNode;
+  onSave: (body: string) => void;
+  onCancel: () => void;
+}) {
   const [body, setBody] = useState(initial);
   const [preview, setPreview] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -18,6 +27,16 @@ export function DraftEditor({ initial, saveLabel = "Save", onSave, onCancel }: {
     t.setSelectionRange(t.value.length, t.value.length);
   }, []);
   const save = () => body.trim() && onSave(body.trim());
+  const append = (text: string) => {
+    setPreview(false);
+    setBody((b) => `${b}${b && !b.endsWith("\n") ? "\n" : ""}${text}`);
+    setTimeout(() => {
+      const t = ref.current;
+      if (!t) return;
+      t.focus();
+      t.setSelectionRange(t.value.length, t.value.length);
+    }, 0);
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div role="tablist" aria-label="Editor mode" style={{ display: "flex", gap: 2 }}>
@@ -44,13 +63,16 @@ export function DraftEditor({ initial, saveLabel = "Save", onSave, onCancel }: {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
           }}
           aria-label="Comment text"
+          placeholder={placeholder}
           style={{ fontSize: 12.5 }}
         />
       )}
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <button className="btn btn-sm btn-primary" disabled={!body.trim()} onClick={save}>{saveLabel}</button>
         <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
+        {extraActions?.({ append })}
         <span className="muted" style={{ fontSize: 11 }}><span className="kbd">⌘↵</span> save</span>
+        {note}
       </div>
     </div>
   );
