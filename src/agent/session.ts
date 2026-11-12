@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import { AcpConnection } from "./acp";
 import { parseFindingBlocks, reviewBridge } from "./bridge";
 import { setActiveAgentName, startMcpServer } from "./mcpServer";
+import { knownSettings, prefs, readSettings, type AgentSetting, type SessionState, type SettingKind } from "./settings";
 
 export type ChatItem =
   | { kind: "user"; id: string; text: string }
@@ -16,7 +17,13 @@ export type ChatItem =
 
 export type AgentStatus = "idle" | "starting" | "ready" | "busy" | "error" | "stopped";
 
-type Snapshot = { status: AgentStatus; items: ChatItem[]; worktree: string | null };
+type Snapshot = { status: AgentStatus; items: ChatItem[]; worktree: string | null; settings: AgentSetting[] };
+
+/** Known settings with the reviewer's preferences applied, for display before a session runs. */
+function presetSettings(agentId: string): AgentSetting[] {
+  const p = prefs.get(agentId);
+  return knownSettings.get(agentId).map((s) => (p[s.kind] && s.options.some((o) => o.value === p[s.kind]) ? { ...s, current: p[s.kind]! } : s));
+}
 
 const uid = () => crypto.randomUUID();
 
@@ -26,9 +33,11 @@ export class AgentSession {
   private listeners = new Set<() => void>();
   private permissionWaiters = new Map<string, (r: RequestPermissionResponse) => void>();
   private usesMcp = false;
-  private snap: Snapshot = { status: "idle", items: [], worktree: null };
+  private snap: Snapshot;
 
-  constructor(readonly agentId: string, readonly agentName: string) {}
+  constructor(readonly agentId: string, readonly agentName: string) {
+    this.snap = { status: "idle", items: [], worktree: null, settings: presetSettings(agentId) };
+  }
 
   subscribe = (cb: () => void) => {
     this.listeners.add(cb);
@@ -76,12 +85,93 @@ export class AgentSession {
       const s = await conn.newSession(worktree, mcpServers);
       this.conn = conn;
       this.sessionId = s.sessionId;
+      await this.configure(s as SessionState);
       this.set({ status: "ready" });
     } catch (e) {
       await conn.dispose();
       this.set({ status: "error" });
       this.notice(`Couldn't start ${this.agentName}: ${e instanceof Error ? e.message : String(e)}`, "error");
       throw e;
+    }
+  }
+
+  /** Puts a fresh session into review mode and applies the reviewer's model/effort choices. */
+  private async configure(state: SessionState) {
+    const conn = this.conn!;
+    const sid = this.sessionId!;
+    // Reviews should ask before running commands, whatever the agent's global default is.
+    const modeOpt = state.configOptions?.find((o) => o.category === "mode" && o.type === "select");
+    try {
+      if (modeOpt && String(modeOpt.currentValue) !== "default" && JSON.stringify(modeOpt).includes('"default"')) {
+        const r = await conn.setConfigOption(sid, modeOpt.id, "default");
+        if (r?.configOptions) state = { ...state, configOptions: r.configOptions };
+      } else if (!modeOpt && state.modes && state.modes.currentModeId !== "default" && state.modes.availableModes.some((m) => m.id === "default")) {
+        await conn.setMode(sid, "default");
+      }
+    } catch {
+      this.notice(`Couldn't switch ${this.agentName} to ask-before-running mode; it will use its own default.`);
+    }
+    let settings = readSettings(state);
+    const wanted = prefs.get(this.agentId);
+    for (const kind of ["model", "effort"] as SettingKind[]) {
+      const setting = settings.find((x) => x.kind === kind);
+      const value = wanted[kind];
+      if (setting && value && value !== setting.current && setting.options.some((o) => o.value === value)) {
+        settings = (await this.apply(setting, value)) ?? settings;
+      }
+    }
+    knownSettings.set(this.agentId, settings);
+    this.set({ settings });
+  }
+
+  private async apply(setting: AgentSetting, value: string): Promise<AgentSetting[] | null> {
+    const conn = this.conn!;
+    const sid = this.sessionId!;
+    if (setting.via === "config") {
+      const r = await conn.setConfigOption(sid, setting.id, value);
+      if (r?.configOptions) return readSettings({ configOptions: r.configOptions, models: null });
+    } else {
+      await conn.setModel(sid, value);
+    }
+    return this.snap.settings.map((x) => (x.kind === setting.kind ? { ...x, current: value } : x));
+  }
+
+  /** Change model or effort. Remembered per agent and applied live if a session is running. */
+  async setSetting(kind: SettingKind, value: string): Promise<void> {
+    prefs.set(this.agentId, kind, value);
+    const setting = this.snap.settings.find((x) => x.kind === kind);
+    if (!setting) return;
+    if (!this.conn || !this.sessionId) {
+      this.set({ settings: this.snap.settings.map((x) => (x.kind === kind ? { ...x, current: value } : x)) });
+      return;
+    }
+    try {
+      const next = await this.apply(setting, value);
+      if (next) {
+        knownSettings.set(this.agentId, next);
+        this.set({ settings: next });
+      }
+      const label = next?.find((x) => x.kind === kind)?.options.find((o) => o.value === value)?.name ?? value;
+      this.notice(`${kind === "model" ? "Model" : "Effort"} set to ${label}.`);
+    } catch (e) {
+      this.notice(`Couldn't change ${kind}: ${e instanceof Error ? e.message : String(e)}`, "error");
+    }
+  }
+
+  /** Learns an agent's settings without a worktree, so the pickers can show before first use. */
+  async discover(cwd: string): Promise<void> {
+    if (this.snap.settings.length || this.conn) return;
+    const conn = new AcpConnection({ onUpdate: () => {}, onPermission: async () => ({ outcome: { outcome: "cancelled" } }) });
+    try {
+      await conn.start(this.agentId, cwd);
+      const s = (await conn.newSession(cwd, [])) as SessionState;
+      const settings = readSettings(s);
+      knownSettings.set(this.agentId, settings);
+      if (!this.conn) this.set({ settings: presetSettings(this.agentId) });
+    } catch {
+      /* the pickers fill in when the real session starts */
+    } finally {
+      await conn.dispose();
     }
   }
 
@@ -154,6 +244,15 @@ export class AgentSession {
       case "tool_call":
         this.push({ kind: "tool", id: uid(), toolCallId: u.toolCallId, title: u.title, status: u.status ?? "pending" });
         break;
+      case "config_option_update":
+        if (u.configOptions) {
+          const settings = readSettings({ configOptions: u.configOptions, models: null });
+          if (settings.length) {
+            knownSettings.set(this.agentId, settings);
+            this.set({ settings });
+          }
+        }
+        break;
       case "tool_call_update":
         this.patchItem(
           (i) => i.kind === "tool" && i.toolCallId === u.toolCallId,
@@ -200,7 +299,7 @@ export function useAgentSnapshot(s: AgentSession | null): Snapshot {
     () => (s ? s.getSnapshot() : EMPTY),
   );
 }
-const EMPTY: Snapshot = { status: "idle", items: [], worktree: null };
+const EMPTY: Snapshot = { status: "idle", items: [], worktree: null, settings: [] };
 
 export function reviewLayerPrompt(layerIndex: number, total: number, number: number): string {
   return `You are helping me review layer ${layerIndex} of ${total} (PR #${number}) of a stacked pull request.

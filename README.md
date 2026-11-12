@@ -47,5 +47,6 @@ bunx vitest run                                              # stack inference, 
 cd src-tauri && GH_TOKEN=$(gh auth token) cargo test -- --include-ignored   # worktree against a public repo
 GH_TOKEN=$(gh auth token) bun scripts/smoke.ts <org> <owner/repo>           # read-only GitHub API smoke test
 bun scripts/acp-probe.ts claude|gemini                                      # agent starts and reports capabilities
+bun scripts/agent-settings-probe.ts claude|gemini                           # model/effort/mode switching over ACP (no prompt)
 bun scripts/agent-e2e.ts                                                    # Claude Code calls the review tools (one short prompt)
 ```

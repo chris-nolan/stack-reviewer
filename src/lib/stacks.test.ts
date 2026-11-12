@@ -147,3 +147,24 @@ describe("summaries and labels", () => {
     expect(progressLabel(s, "me")).toBe("1 of 2 approved");
   });
 });
+
+import { readSettings } from "../agent/settings";
+describe("readSettings", () => {
+  it("reads Claude-style config options, flattening groups", () => {
+    const s = readSettings({
+      configOptions: [
+        { id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "auto", options: [{ value: "default", name: "Default" }] },
+        { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: "high", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }] },
+        { id: "model", name: "Model", category: "model", type: "select", currentValue: "opus", options: [{ group: "g", name: "Latest", options: [{ value: "opus", name: "Opus" }, { value: "sonnet", name: "Sonnet" }] }] },
+      ] as never,
+    });
+    expect(s.map((x) => [x.kind, x.id, x.current, x.options.map((o) => o.value).join(",")])).toEqual([
+      ["model", "model", "opus", "opus,sonnet"],
+      ["effort", "effort", "high", "low,high"],
+    ]);
+  });
+  it("falls back to the legacy models list (Gemini)", () => {
+    const s = readSettings({ models: { currentModelId: "auto", availableModels: [{ modelId: "auto", name: "Auto" }, { modelId: "pro", name: "Pro" }] } });
+    expect(s).toEqual([{ kind: "model", id: "model", via: "models", name: "Model", current: "auto", options: [{ value: "auto", name: "Auto", description: undefined }, { value: "pro", name: "Pro", description: undefined }] }]);
+  });
+});

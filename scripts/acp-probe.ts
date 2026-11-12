@@ -31,7 +31,7 @@ const timer = setTimeout(() => { console.log("timeout"); child.kill(); process.e
 const init = await rpc("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } });
 console.log("initialize:", JSON.stringify({ protocolVersion: init.result?.protocolVersion, agentCapabilities: init.result?.agentCapabilities, authMethods: init.result?.authMethods?.map((a: any) => a.id), error: init.error }));
 const s = await rpc("session/new", { cwd, mcpServers: [] });
-console.log("session/new:", s.error ? `error ${s.error.code} ${s.error.message}` : `ok ${String(s.result?.sessionId).slice(0, 8)}…`);
+console.log("session/new:", s.error ? `error ${s.error.code} ${s.error.message}` : JSON.stringify({ ...s.result, sessionId: "…" }, null, 1));
 clearTimeout(timer);
 child.kill();
 process.exit(0);

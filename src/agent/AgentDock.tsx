@@ -4,7 +4,9 @@ import type { Layer, RepoRef, Stack } from "../lib/model";
 import { repoKey } from "../lib/model";
 import { invoke, isTauri, local } from "../lib/platform";
 import { AgentDot } from "../ui/bits";
-import { getAgentSession, reviewLayerPrompt, useAgentSnapshot, type ChatItem } from "./session";
+import { homeDir } from "@tauri-apps/api/path";
+import { getAgentSession, reviewLayerPrompt, useAgentSnapshot, type AgentSession, type ChatItem } from "./session";
+import type { AgentSetting } from "./settings";
 import { useAgents } from "./useAgents";
 
 type Props = {
@@ -33,6 +35,11 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => local.set("agent", agentId), [agentId]);
+  useEffect(() => {
+    // First time with this agent: learn its models/effort levels so the pickers show before a review starts.
+    if (!session || !isTauri() || session.getSnapshot().settings.length) return;
+    void homeDir().then((home) => session.discover(home)).catch(() => {});
+  }, [session]);
   useEffect(() => endRef.current?.scrollIntoView({ block: "end" }), [snap.items.length, snap.items.at(-1)]);
 
   const ensureRunning = async () => {
@@ -104,6 +111,8 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
         {["#" + layer.pr.number + " diff", "whole stack", "checks + logs", "worktree"].map((c) => <span key={c} className="pill" style={{ fontSize: 11, background: "#1a1f26", color: "var(--text-2)" }}>{c}</span>)}
         <span className="pill" style={{ fontSize: 11, background: "#2a1f12", color: "var(--agent)" }}>drafts only</span>
       </div>
+      <AgentSettingsRow session={session} settings={snap.settings} disabled={snap.status === "busy" || snap.status === "starting"} />
+
       <div className="scroll" style={{ flex: "1 1 auto", padding: 12, display: "flex", flexDirection: "column", gap: 12, lineHeight: 1.5 }} aria-live="polite">
         {snap.items.length === 0 && (
           <p className="muted" style={{ margin: 0 }}>
@@ -153,6 +162,38 @@ export function AgentDock({ stack, layer, repo, currentFile, openFindings, onNex
         </form>
       </div>
     </DockShell>
+  );
+}
+
+function AgentSettingsRow({ session, settings, disabled }: { session: AgentSession | null; settings: AgentSetting[]; disabled: boolean }) {
+  if (!session) return null;
+  if (!settings.length) {
+    return <div className="muted" style={{ padding: "6px 12px", fontSize: 12, borderBottom: "1px solid var(--border)" }}>Model and effort appear once {session.agentName} has started.</div>;
+  }
+  return (
+    <div style={{ display: "flex", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+      {settings.map((s) => {
+        const id = `agent-${s.kind}`;
+        const current = s.options.find((o) => o.value === s.current);
+        return (
+          <label key={s.kind} htmlFor={id} style={{ flex: s.kind === "model" ? "1 1 60%" : "1 1 40%", minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+            <span className="label" style={{ fontSize: 10 }}>{s.kind === "model" ? "Model" : "Effort"}</span>
+            <select
+              id={id}
+              className="input"
+              style={{ padding: "4px 6px", fontSize: 12 }}
+              value={s.current}
+              disabled={disabled}
+              title={current?.description}
+              onChange={(e) => void session.setSetting(s.kind, e.target.value)}
+            >
+              {!current && <option value={s.current}>{s.current}</option>}
+              {s.options.map((o) => <option key={o.value} value={o.value} title={o.description}>{o.name}</option>)}
+            </select>
+          </label>
+        );
+      })}
+    </div>
   );
 }
 

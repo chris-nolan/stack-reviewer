@@ -5,7 +5,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   InitializeResponse, McpServer, NewSessionResponse, PromptResponse, RequestPermissionRequest,
-  RequestPermissionResponse, SessionNotification,
+  RequestPermissionResponse, SessionConfigOption, SessionNotification,
 } from "@agentclientprotocol/sdk";
 import { invoke } from "../lib/platform";
 
@@ -72,6 +72,19 @@ export class AcpConnection {
       }
       throw e;
     }
+  }
+
+  setConfigOption(sessionId: string, configId: string, value: string): Promise<{ configOptions?: SessionConfigOption[] }> {
+    return this.request("session/set_config_option", { sessionId, configId, value });
+  }
+
+  /** Older (pre-config-options) model switching, still used by Gemini CLI. */
+  setModel(sessionId: string, modelId: string): Promise<unknown> {
+    return this.request("session/set_model", { sessionId, modelId });
+  }
+
+  setMode(sessionId: string, modeId: string): Promise<unknown> {
+    return this.request("session/set_mode", { sessionId, modeId });
   }
 
   prompt(sessionId: string, text: string): Promise<PromptResponse> {
