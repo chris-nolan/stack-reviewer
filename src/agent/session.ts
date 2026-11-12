@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
 import { AcpConnection } from "./acp";
 import { agentContexts, parseFindingBlocks, reviewBridge } from "./bridge";
 import { startMcpServer } from "./mcpServer";
-import { local } from "../lib/platform";
+import { durable } from "../lib/durable";
 import { knownSettings, prefs, readSettings, type AgentSetting, type SessionState, type SettingKind } from "./settings";
 
 export type ChatItem =
@@ -71,14 +71,14 @@ export class AgentSession {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(readonly agentId: string, readonly agentName: string, readonly stackId: string) {
-    const saved = local.get<Saved | null>(this.storageKey, null);
+    const saved = durable.get<Saved | null>("chat", this.storageKey, null);
     this.savedSessionId = saved?.sessionId ?? null;
     this.snap = { status: "idle", items: saved?.items ?? [], worktree: null, settings: presetSettings(agentId), layer: saved?.layer ?? null };
     agentContexts.set(this.token, { stackId, agentName, activePr: () => this.snap.layer?.pr ?? null });
   }
 
   private get storageKey() {
-    return `chat.${this.stackId}|${this.agentId}`;
+    return `${this.stackId}|${this.agentId}`;
   }
 
   private save() {
@@ -87,7 +87,7 @@ export class AgentSession {
       const items = this.snap.items.slice(-MAX_SAVED_ITEMS).map((i) =>
         i.kind === "permission" && !i.chosen ? { ...i, chosen: "expired" } : i.kind === "thought" ? { ...i, text: i.text.slice(0, 2000) } : i,
       );
-      local.set(this.storageKey, { items, sessionId: this.sessionId ?? this.savedSessionId, layer: this.snap.layer } satisfies Saved);
+      durable.set("chat", this.storageKey, { items, sessionId: this.sessionId ?? this.savedSessionId, layer: this.snap.layer } satisfies Saved);
     }, 500);
   }
 
@@ -276,7 +276,7 @@ export class AgentSession {
     this.savedSessionId = null;
     this.layerNote = null;
     this.set({ status: "idle", items: [], layer: null });
-    local.set(this.storageKey, null);
+    durable.delete("chat", this.storageKey);
   }
 
   get running(): boolean {

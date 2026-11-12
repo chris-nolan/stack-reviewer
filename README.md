@@ -38,6 +38,13 @@ The agent chat is one conversation per stack. The agent works in a single checko
 
 Agents never write to GitHub. `add_finding` only accepts lines that appear in the diff. Each finding goes into the margin, where you choose **Draft** or **Dismiss**.
 
+## Where state lives
+
+- **Durable state** (review drafts, findings, briefs and summaries; agent transcripts and resume ids; Home's seen/pinned/recent) is in a SQLite database, `state.db`, in the app data dir (macOS: `~/Library/Application Support/<app identifier>/`, Windows: `%APPDATA%\<app identifier>\`). It is a single `kv(ns, key, value, updated_at)` table in WAL mode, owned by Rust (`src-tauri/src/store.rs`) and written through `src/lib/durable.ts` (in-memory cache, debounced writes, flushed on exit). Namespaces: `review` (per PR), `chat` (per stack|agent), `home` (per name + data-source/viewer scope), `meta`.
+- On first launch with the database, existing webview localStorage values for those keys are copied in once, then removed.
+- **UI preferences** (layout, panel toggles, file filters, agent choice/overrides, notifications, org) stay in webview localStorage. The token stays in the OS keychain.
+- In a plain browser (`?demo`, `?snapshot`) `durable.ts` falls back to localStorage; there is no database and no migration.
+
 ## Keyboard (Review screen)
 
 `j` mark viewed & next · `k` previous file · `v` toggle viewed · `n`/`p` next/previous change · `c` comment on the focused line · `[`/`]` previous/next layer · `a` agent panel · `f` finish layer

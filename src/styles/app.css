@@ -163,3 +163,5 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .md input[type="checkbox"] { margin: 0 6px 0 0; vertical-align: middle; }
 .md-compact { font-size: 12.5px; }
 .md-compact p { margin-bottom: 6px; }
+
+.boot { display: grid; place-items: center; height: 100vh; color: var(--muted, #888); font-size: 13px; }

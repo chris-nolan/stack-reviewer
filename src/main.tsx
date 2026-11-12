@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { SessionProvider } from "./app/session";
+import { initDurable } from "./lib/durable";
 import "./styles/app.css";
 
 const queryClient = new QueryClient({
@@ -17,12 +18,20 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+const tree = (
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <App />
       </SessionProvider>
     </QueryClientProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 );
+
+const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
+root.render(<div className="boot">Starting…</div>);
+
+// Durable state (SQLite on desktop) is loaded once before anything reads it.
+initDurable()
+  .catch((e) => console.error("durable state failed to load", e))
+  .finally(() => root.render(tree));

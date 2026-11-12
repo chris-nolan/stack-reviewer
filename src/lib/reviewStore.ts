@@ -3,25 +3,28 @@
 
 import { useSyncExternalStore } from "react";
 import type { DraftComment, Finding } from "./model";
-import { local } from "./platform";
+import { durable } from "./durable";
 
 type PrState = { drafts: DraftComment[]; findings: Finding[]; brief?: { summary: string; readingOrder: string[]; agent: string }; summary?: string };
 type All = Record<string, PrState>;
 
-let state: All = local.get<All>("review", {});
+// One durable row per PR (namespace "review", key "owner/repo#n").
+let loaded: All | null = null;
+// Lazy: durable state is only filled after initDurable() at startup.
+const cur = (): All => (loaded ??= durable.all<PrState>("review"));
 const listeners = new Set<() => void>();
 const EMPTY: PrState = { drafts: [], findings: [] };
 
-function commit(next: All) {
-  state = next;
-  local.set("review", state);
+function commit(next: All, changed: string) {
+  loaded = next;
+  durable.set("review", changed, next[changed]);
   listeners.forEach((l) => l());
 }
 
 export const prKey = (repo: { owner: string; repo: string }, number: number) => `${repo.owner}/${repo.repo}#${number}`;
 
 function update(key: string, fn: (s: PrState) => PrState) {
-  commit({ ...state, [key]: fn(state[key] ?? EMPTY) });
+  commit({ ...cur(), [key]: fn(cur()[key] ?? EMPTY) }, key);
 }
 
 /** The comment text a finding becomes when drafted, before any edits. */
@@ -31,7 +34,7 @@ export function findingDraftBody(f: Finding): string {
 }
 
 export const reviewStore = {
-  get: (key: string): PrState => state[key] ?? EMPTY,
+  get: (key: string): PrState => cur()[key] ?? EMPTY,
   addDraft(key: string, d: Omit<DraftComment, "id">) {
     update(key, (s) => ({ ...s, drafts: [...s.drafts, { ...d, id: crypto.randomUUID() }] }));
   },
@@ -85,6 +88,6 @@ export function useReviewState(key: string): PrState {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },
-    () => state[key] ?? EMPTY,
+    () => cur()[key] ?? EMPTY,
   );
 }

@@ -3,6 +3,7 @@ mod auth;
 mod cache;
 mod git;
 mod mcp;
+mod store;
 
 /// GET a URL with a bearer token, following redirects. reqwest drops the Authorization header
 /// when a redirect leaves the original host (e.g. Actions logs on blob storage).
@@ -32,6 +33,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(agent::Agents::default())
         .manage(mcp::Mcp::default())
+        .setup(|app| store::setup(app.handle()))
         .invoke_handler(tauri::generate_handler![
             auth::auth_get_token,
             auth::auth_save_token,
@@ -49,6 +51,9 @@ pub fn run() {
             cache::cache_remove_repo,
             mcp::mcp_url,
             mcp::mcp_respond,
+            store::store_load,
+            store::store_set,
+            store::store_delete,
             http_get_text,
         ])
         .run(tauri::generate_context!())

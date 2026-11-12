@@ -1,5 +1,5 @@
-// Local state that must not leak between data sources (demo / snapshot / real) or viewers.
-import { local } from "./platform";
+// Durable ("home" namespace) state that must not leak between data sources (demo / snapshot / real) or viewers.
+import { durable } from "./durable";
 
 let scope = "";
 
@@ -12,6 +12,6 @@ export const storeScope = () => scope;
 const k = (key: string) => (scope ? `${key}:${scope}` : key);
 
 export const scoped = {
-  get: <T,>(key: string, fallback: T): T => local.get<T>(k(key), fallback),
-  set: (key: string, value: unknown) => local.set(k(key), value),
+  get: <T,>(key: string, fallback: T): T => durable.get<T>("home", k(key), fallback),
+  set: (key: string, value: unknown) => durable.set("home", k(key), value),
 };
