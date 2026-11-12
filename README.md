@@ -20,6 +20,24 @@ Sign-in options:
 
 Tokens are stored in the OS keychain (`stack-reviewer` / `github`).
 
+## Windows
+
+Prerequisites (in addition to the above):
+- **Microsoft C++ Build Tools** (MSVC, "Desktop development with C++" workload, with the Windows SDK) and Rust's `x86_64-pc-windows-msvc` toolchain.
+- **WebView2 runtime**, preinstalled on Windows 11 and current Windows 10; otherwise install the Evergreen runtime.
+- **Git for Windows** (the app shells out to `git`). **Node 22+** for the Claude Code ACP adapter (`npx.cmd`). **GitHub CLI** is optional (only for "Use my GitHub CLI login").
+- Recommended: turn on Windows long paths (`LongPathsEnabled` registry setting). Review checkouts live under `%APPDATA%\com.stackreviewer.app\repos`; the app already runs git with `core.longpaths=true`.
+
+Then `bun install` and `bun run tauri dev` / `bun run tauri build` work as on macOS. Shortcuts show as `Ctrl` instead of `⌘`.
+
+How tools are found: `PATH` first, then the usual install dirs (`%APPDATA%\npm`, Program Files `Git\cmd` and `GitHub CLI`, `%LOCALAPPDATA%\Programs`, WinGet links, nvm-windows, Volta, scoop, Chocolatey, `%USERPROFILE%\.local\bin`). Only `.exe`/`.cmd`/`.bat`/`.com` files are launched. `~\` works in Settings overrides.
+
+Known gaps:
+- Not yet built or run on a real Windows machine; CI (`.github/workflows/build.yml`) will be the first real check once the repo has a remote.
+- Custom agent arguments containing `%`, `"` or `&` can't be passed to `.cmd`/`.bat` shims (a Windows limitation); point the override at the `.exe` instead.
+- Agents are stopped with `taskkill /T`; if the app is killed abruptly, a Node child process can be left running.
+- Builds are unsigned, so SmartScreen will warn.
+
 ## How it works
 
 | Piece | Where |

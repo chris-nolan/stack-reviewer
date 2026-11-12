@@ -1,0 +1,69 @@
+name: build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      # Node is only needed at runtime for the Claude ACP adapter (npx), but keep it available for tooling.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bunx tsc --noEmit -p .
+
+      - name: Frontend tests
+        run: bunx vitest run
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      # A debug build is enough to prove the app compiles and bundles on each OS (no signing set up yet).
+      - name: Build app (debug)
+        run: bun run tauri build --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stack-reviewer-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/debug/bundle/dmg/*.dmg
+            src-tauri/target/debug/bundle/macos/*.app
+            src-tauri/target/debug/bundle/msi/*.msi
+            src-tauri/target/debug/bundle/nsis/*.exe

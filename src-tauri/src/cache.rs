@@ -2,6 +2,7 @@
 //! Everything that deletes goes through `ensure_inside`, which refuses any path outside `repos/`.
 
 use crate::auth::find_binary;
+use crate::platform;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -139,7 +140,9 @@ pub fn report(root: &Path) -> CacheReport {
 
 async fn git_in(dir: &Path, args: &[&str]) -> Result<(), String> {
     let bin = find_binary("git").ok_or("git is not installed")?;
-    let out = Command::new(bin).args(args).current_dir(dir).output().await.map_err(|e| e.to_string())?;
+    let mut cmd = Command::new(bin);
+    cmd.args(args).current_dir(dir);
+    let out = platform::no_window(&mut cmd).output().await.map_err(|e| e.to_string())?;
     if out.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
 }
 
@@ -147,11 +150,14 @@ async fn git_in(dir: &Path, args: &[&str]) -> Result<(), String> {
 async fn remove_worktree(root: &Path, clone: &Path, wt: &Path) -> Result<u64, String> {
     let real = ensure_inside(root, wt)?;
     let size = dir_size(&real);
+    // `.exists()` covers both a `.git` directory (clone) and a `.git` file (linked worktree).
     if clone.join(".git").exists() {
-        let _ = git_in(clone, &["worktree", "remove", "--force", &real.to_string_lossy()]).await;
+        // `canonicalize` yields `\\?\C:\...` on Windows, which git rejects; hand it the plain form.
+        let _ = git_in(clone, &["worktree", "remove", "--force", &platform::strip_verbatim(&real.to_string_lossy())]).await;
     }
     if real.exists() {
-        std::fs::remove_dir_all(&real).map_err(|e| format!("{}: {e}", real.display()))?;
+        // Retries after clearing read-only flags (git's object files on Windows).
+        platform::remove_dir_all_force(&real).map_err(|e| format!("{}: {e}", real.display()))?;
     }
     Ok(size)
 }
@@ -194,7 +200,8 @@ pub async fn cleanup(root: &Path, now: SystemTime, busy: &[PathBuf]) -> CleanupR
 }
 
 fn plain(s: &str) -> Result<&str, String> {
-    if s.is_empty() || s == "." || s.contains("..") || s.contains('/') || s.contains('\\') || s.starts_with('-') {
+    // `:` rejects drive-letter / alternate-stream tricks such as `C:` or `a:b` on Windows.
+    if s.is_empty() || s == "." || s.contains("..") || s.contains(['/', '\\', ':']) || s.starts_with('-') {
         return Err(format!("invalid name: {s}"));
     }
     Ok(s)
@@ -204,7 +211,7 @@ pub async fn remove_repo_dir(root: &Path, owner: &str, repo: &str) -> Result<u64
     let dir = root.join(plain(owner)?).join(plain(repo)?);
     let real = ensure_inside(root, &dir)?;
     let size = dir_size(&real);
-    std::fs::remove_dir_all(&real).map_err(|e| format!("{}: {e}", real.display()))?;
+    platform::remove_dir_all_force(&real).map_err(|e| format!("{}: {e}", real.display()))?;
     // Drop the owner dir too if it is now empty.
     if let Some(parent) = real.parent() {
         if parent != root.canonicalize().unwrap_or_default() {
@@ -306,6 +313,8 @@ mod tests {
         let rep = report(&repos);
         assert_eq!(rep.repos.len(), 1);
         assert!(remove_repo_dir(&repos, "..", "x").await.is_err());
+        assert!(remove_repo_dir(&repos, "C:", "x").await.is_err());
+        assert!(remove_repo_dir(&repos, "o", "..\\x").await.is_err());
         assert!(remove_repo_dir(&repos, "o", "r").await.is_ok());
         assert!(!repos.join("o").exists());
         let _ = std::fs::remove_dir_all(&root);

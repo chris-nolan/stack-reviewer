@@ -1,6 +1,7 @@
 //! GitHub credentials: OS keychain storage, `gh` CLI import, and OAuth device flow.
 
 use serde::{Deserialize, Serialize};
+use crate::platform;
 use std::path::PathBuf;
 
 const SERVICE: &str = "stack-reviewer";
@@ -32,25 +33,15 @@ pub fn auth_clear_token() -> Result<(), String> {
     }
 }
 
-/// GUI apps on macOS don't inherit the shell PATH, so look in the usual places too.
+/// GUI apps don't inherit the shell PATH on macOS, and Windows installers often add dirs that
+/// only new shells see, so look in the usual install locations too (see `platform::tool_dirs`).
 pub fn find_binary(name: &str) -> Option<PathBuf> {
     if let Ok(p) = which::which(name) {
         return Some(p);
     }
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        "/opt/homebrew/bin".to_string(),
-        "/usr/local/bin".to_string(),
-        "/usr/bin".to_string(),
-        format!("{home}/.local/bin"),
-        format!("{home}/.proto/shims"),
-        format!("{home}/.bun/bin"),
-        format!("{home}/.npm-global/bin"),
-        "C:\\Program Files\\GitHub CLI".to_string(),
-    ];
-    for dir in candidates {
-        for file in [name.to_string(), format!("{name}.exe"), format!("{name}.cmd")] {
-            let p = PathBuf::from(&dir).join(&file);
+    for dir in platform::current_tool_dirs() {
+        for file in platform::candidate_file_names(name, cfg!(windows)) {
+            let p = dir.join(&file);
             if p.is_file() {
                 return Some(p);
             }
@@ -63,8 +54,9 @@ pub fn find_binary(name: &str) -> Option<PathBuf> {
 #[tauri::command]
 pub async fn auth_import_gh_token() -> Result<String, String> {
     let gh = find_binary("gh").ok_or("GitHub CLI (gh) was not found on this machine")?;
-    let out = tokio::process::Command::new(gh)
-        .args(["auth", "token", "--hostname", "github.com"])
+    let mut cmd = tokio::process::Command::new(gh);
+    cmd.args(["auth", "token", "--hostname", "github.com"]);
+    let out = platform::no_window(&mut cmd)
         .output()
         .await
         .map_err(|e| e.to_string())?;

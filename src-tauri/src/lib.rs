@@ -3,6 +3,7 @@ mod auth;
 mod cache;
 mod git;
 mod mcp;
+mod platform;
 mod store;
 
 /// GET a URL with a bearer token, following redirects. reqwest drops the Authorization header

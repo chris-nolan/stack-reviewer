@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DraftComment, Finding } from "../../lib/model";
 import { findingDraftBody } from "../../lib/reviewStore";
+import { shortcut } from "../../lib/shortcuts";
 import { SEVERITY_STYLE } from "../../ui/bits";
 import { Markdown } from "../../ui/Markdown";
 
@@ -71,7 +72,7 @@ export function DraftEditor({ initial, saveLabel = "Save", placeholder, extraAct
         <button className="btn btn-sm btn-primary" disabled={!body.trim()} onClick={save}>{saveLabel}</button>
         <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
         {extraActions?.({ append })}
-        <span className="muted" style={{ fontSize: 11 }}><span className="kbd">⌘↵</span> save</span>
+        <span className="muted" style={{ fontSize: 11 }}><span className="kbd">{shortcut("↵")}</span> save</span>
         {note}
       </div>
     </div>

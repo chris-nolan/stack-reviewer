@@ -1,14 +1,20 @@
 //! App-managed partial clones and per-layer worktrees, so agents can read real code.
 
 use crate::auth::find_binary;
+use crate::platform;
 use base64::Engine;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tokio::process::Command;
 
+/// Owner/repo names become directory names. GitHub only allows `[A-Za-z0-9._-]`; being that strict also
+/// rules out every Windows hazard: drive letters/streams (`:`), separators, `<>"|?*`, and (on Windows)
+/// reserved device names and trailing dots.
 fn safe(s: &str) -> Result<&str, String> {
-    if s.is_empty() || s.contains("..") || s.contains('/') || s.contains('\\') || s.starts_with('-') {
+    let ok_chars = s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    let win_bad = cfg!(windows) && (platform::is_windows_reserved(s) || s.ends_with('.'));
+    if s.is_empty() || s == "." || s.contains("..") || !ok_chars || s.starts_with('-') || win_bad {
         return Err(format!("invalid name: {s}"));
     }
     Ok(s)
@@ -21,14 +27,20 @@ fn is_sha(s: &str) -> bool {
 async fn git(dir: &Path, token: &str, args: &[&str]) -> Result<String, String> {
     let bin = find_binary("git").ok_or("git is not installed")?;
     let basic = base64::engine::general_purpose::STANDARD.encode(format!("x-access-token:{token}"));
-    let out = Command::new(bin)
-        .args(args)
+    let mut cmd = Command::new(bin);
+    cmd.args(args)
         .current_dir(dir)
         // Scope the credential to github.com without writing it to any config file.
-        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_COUNT", "2")
         .env("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
         .env("GIT_CONFIG_VALUE_0", format!("AUTHORIZATION: basic {basic}"))
+        // Windows' 260-char path limit bites deep repo trees under the app data dir.
+        .env("GIT_CONFIG_KEY_1", "core.longpaths")
+        .env("GIT_CONFIG_VALUE_1", "true")
         .env("GIT_TERMINAL_PROMPT", "0")
+        // Git Credential Manager (bundled with Git for Windows) must never pop a dialog; we auth via the header.
+        .env("GCM_INTERACTIVE", "never");
+    let out = platform::no_window(&mut cmd)
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -89,6 +101,7 @@ pub async fn prepare(
     }
     let root: PathBuf = data_dir.join("repos").join(&owner).join(&repo);
     let clone = root.join("clone");
+    // `.exists()` (not `.is_dir()`): a clone has a `.git` directory, but a linked worktree has a `.git` file.
     if !clone.join(".git").exists() {
         std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
         let url = format!("https://github.com/{owner}/{repo}.git");
@@ -105,7 +118,7 @@ pub async fn prepare(
     let wt = root.join("worktrees").join(name);
     if !wt.exists() {
         std::fs::create_dir_all(wt.parent().unwrap()).map_err(|e| e.to_string())?;
-        let wt_str = wt.to_string_lossy().to_string();
+        let wt_str = platform::strip_verbatim(&wt.to_string_lossy());
         git(&clone, &token, &["worktree", "add", "--detach", "--quiet", &wt_str, &head_sha]).await?;
     } else if slot.is_some() {
         // Move the shared worktree to this layer. It is app-managed and agents may not edit it,
@@ -145,6 +158,16 @@ mod tests {
         let at = super::git(std::path::Path::new(&moved.path), &token, &["rev-parse", "HEAD"]).await.unwrap();
         assert_eq!(at.trim(), base);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn safe_names_reject_windows_and_unix_tricks() {
+        for ok in ["octocat", "Hello-World", ".github", "a_b.c", "repo.js"] {
+            assert!(super::safe(ok).is_ok(), "{ok}");
+        }
+        for bad in ["", ".", "..", "a/b", "a\\b", "C:\\x", "c:", "a:b", "x*", "a?b", "a|b", "<a>", "\"q\"", "-x", "a..b", "a b", "o\\r"] {
+            assert!(super::safe(bad).is_err(), "{bad}");
+        }
     }
 
     #[tokio::test]

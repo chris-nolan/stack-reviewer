@@ -12,7 +12,9 @@ export function parsePatch(patch: string | undefined): DiffRow[] {
   const rows: DiffRow[] = [];
   let oldLine = 0;
   let newLine = 0;
-  const lines = patch.split("\n");
+  // GitHub returns the file's own line endings, so CRLF files yield "\r\n"; strip the CR so text and
+  // line matching (and the suggestion blocks built from it) never carry a stray "\r".
+  const lines = patch.split(/\r?\n/);
   if (lines.at(-1) === "") lines.pop(); // trailing newline is not a context line
   for (const raw of lines) {
     const m = HUNK.exec(raw);

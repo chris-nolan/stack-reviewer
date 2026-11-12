@@ -2,6 +2,7 @@
 //! to the webview as events. The ACP protocol itself is spoken by the frontend.
 
 use crate::auth::find_binary;
+use crate::platform;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -48,28 +49,9 @@ struct LaunchSpec {
 }
 
 /// PATH for agent subprocesses: GUI apps start with a minimal PATH, but agents need node etc.
-fn agent_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut dirs: Vec<String> = std::env::var("PATH")
-        .unwrap_or_default()
-        .split(if cfg!(windows) { ';' } else { ':' })
-        .map(String::from)
-        .collect();
-    for d in [
-        "/opt/homebrew/bin".to_string(),
-        "/usr/local/bin".to_string(),
-        format!("{home}/.local/bin"),
-        format!("{home}/.proto/shims"),
-        format!("{home}/.proto/bin"),
-        format!("{home}/.bun/bin"),
-        format!("{home}/.volta/bin"),
-        format!("{home}/.npm-global/bin"),
-    ] {
-        if !dirs.contains(&d) {
-            dirs.push(d);
-        }
-    }
-    dirs.join(if cfg!(windows) { ";" } else { ":" })
+fn agent_path() -> std::ffi::OsString {
+    let existing = std::env::var_os("PATH").unwrap_or_default();
+    platform::build_path(&existing, &platform::current_tool_dirs(), cfg!(windows))
 }
 
 /// A command the user entered in Settings: replaces the built-in launch for a known agent,
@@ -85,17 +67,27 @@ pub struct AgentOverride {
 }
 
 /// Resolves a user-entered command: a path (absolute, `~/`, or containing a separator) must exist; a bare name is looked up on PATH.
+/// On Windows a path may omit the extension (`...\npm\gemini`), so `.exe`/`.cmd`/`.bat` are tried too.
 fn resolve_command(command: &str) -> Result<PathBuf, String> {
     let c = command.trim();
     if c.is_empty() {
         return Err("The command is empty".into());
     }
-    let expanded = match c.strip_prefix("~/") {
-        Some(rest) => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest),
-        None => PathBuf::from(c),
-    };
     if c.contains('/') || c.contains('\\') || c.starts_with('~') {
-        if expanded.is_file() { Ok(expanded) } else { Err(format!("{} does not exist", expanded.display())) }
+        let expanded = platform::expand_tilde(c, platform::home_dir().as_deref());
+        if expanded.is_file() {
+            return Ok(expanded);
+        }
+        if cfg!(windows) {
+            let s = expanded.to_string_lossy().to_string();
+            for name in platform::candidate_file_names(&s, true) {
+                let p = PathBuf::from(name);
+                if p.is_file() {
+                    return Ok(p);
+                }
+            }
+        }
+        Err(format!("{} does not exist", expanded.display()))
     } else {
         find_binary(c).ok_or_else(|| format!("`{c}` was not found on PATH"))
     }
@@ -150,16 +142,24 @@ pub fn agents_detect(overrides: Option<Vec<AgentOverride>>) -> Vec<AgentInfo> {
 #[tauri::command]
 pub async fn agent_spawn(app: AppHandle, state: State<'_, Agents>, agent: String, cwd: String, launch: Option<AgentOverride>) -> Result<u32, String> {
     let spec = launch_spec(&agent, launch.as_ref())?;
-    let mut child = Command::new(&spec.program)
-        .args(&spec.args)
+    // `.cmd`/`.bat` shims (npx.cmd, npm-installed gemini) are run by std through cmd.exe with its own
+    // escaping; arguments it cannot escape safely (`%`, quotes, `&`...) are rejected with InvalidInput.
+    let batch = platform::is_batch_script(&spec.program);
+    let mut cmd = Command::new(&spec.program);
+    cmd.args(&spec.args)
         .current_dir(&cwd)
         .env("PATH", agent_path())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("Could not start {agent}: {e}"))?;
+        .kill_on_drop(true);
+    let mut child = platform::no_window(&mut cmd).spawn().map_err(|e| {
+        if batch && e.kind() == std::io::ErrorKind::InvalidInput {
+            format!("Could not start {agent}: Windows cannot pass these arguments to a .cmd/.bat script (avoid %, quotes and &, or point the command at the .exe): {e}")
+        } else {
+            format!("Could not start {agent}: {e}")
+        }
+    })?;
 
     let id = state.next.fetch_add(1, Ordering::SeqCst) + 1;
     let stdout = child.stdout.take().ok_or("no stdout")?;
@@ -202,7 +202,15 @@ pub async fn agent_write(state: State<'_, Agents>, id: u32, line: String) -> Res
 #[tauri::command]
 pub async fn agent_kill(state: State<'_, Agents>, id: u32) -> Result<(), String> {
     if let Some(p) = state.procs.lock().await.remove(&id) {
-        let _ = p.child.lock().await.kill().await;
+        let mut child = p.child.lock().await;
+        // Killing `npx.cmd` only ends cmd.exe and leaves node running, so take the whole tree down.
+        #[cfg(windows)]
+        if let Some(pid) = child.id() {
+            let mut tk = Command::new("taskkill");
+            tk.args(["/PID", &pid.to_string(), "/T", "/F"]);
+            let _ = platform::no_window(&mut tk).output().await;
+        }
+        let _ = child.kill().await;
     }
     Ok(())
 }
@@ -216,17 +224,26 @@ mod tests {
         let o = AgentOverride { id: "custom-x".into(), name: "X".into(), command: "/definitely/not/here".into(), args: vec![] };
         assert!(launch_spec("custom-x", Some(&o)).is_err());
         assert!(launch_spec("custom-x", None).is_err());
-        let sh = AgentOverride { id: "gemini".into(), name: String::new(), command: "/bin/sh".into(), args: vec!["-c".into(), "true".into()] };
+        // Any existing file works as the override target; the test binary itself exists on every OS.
+        let exe = std::env::current_exe().unwrap();
+        let sh = AgentOverride { id: "gemini".into(), name: String::new(), command: exe.to_string_lossy().to_string(), args: vec!["-c".into(), "true".into()] };
         let spec = launch_spec("gemini", Some(&sh)).unwrap();
-        assert_eq!(spec.program, PathBuf::from("/bin/sh"));
+        assert_eq!(spec.program, exe);
         assert_eq!(spec.args, vec!["-c", "true"]);
     }
 
     #[test]
     fn detect_lists_custom_agents() {
-        let o = AgentOverride { id: "custom-x".into(), name: "My agent".into(), command: "/bin/sh".into(), args: vec![] };
+        let o = AgentOverride { id: "custom-x".into(), name: "My agent".into(), command: std::env::current_exe().unwrap().to_string_lossy().to_string(), args: vec![] };
         let list = agents_detect(Some(vec![o]));
         assert_eq!(list.len(), 3);
         assert!(list[2].available && list[2].name == "My agent");
+    }
+
+    #[test]
+    fn tilde_and_missing_paths() {
+        assert!(resolve_command("").is_err());
+        assert!(resolve_command("~/definitely-not-here-sr").unwrap_err().contains("does not exist"));
+        assert!(resolve_command("C:\\definitely\\not\\here.exe").unwrap_err().contains("does not exist"));
     }
 }

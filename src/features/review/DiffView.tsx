@@ -65,13 +65,13 @@ function useSides(repo: RepoRef, file: FileChange, newRef: string, oldRef: strin
   // Only trust a fetched file if it agrees with the patch (the old side may be at a different
   // commit than the PR's merge base if the base branch moved).
   const newLines = useMemo(() => {
-    const lines = newText.data?.split("\n") ?? null;
+    const lines = newText.data?.split(/\r?\n/) ?? null;
     if (!lines) return null;
     const ok = rows.every((r) => !(r.kind === "add" || r.kind === "ctx") || lines[r.newLine! - 1] === r.text);
     return ok ? lines : null;
   }, [newText.data, rows]);
   const oldLines = useMemo(() => {
-    const lines = oldText.data?.split("\n") ?? null;
+    const lines = oldText.data?.split(/\r?\n/) ?? null;
     if (!lines) return null;
     const ok = rows.every((r) => !(r.kind === "del" || r.kind === "ctx") || lines[r.oldLine! - 1] === r.text);
     return ok ? lines : null;

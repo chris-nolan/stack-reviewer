@@ -1,6 +1,7 @@
 // Command registry: screens register context-specific commands while mounted (`useCommands`),
 // and one global palette (see Palette.tsx) lists them next to the app-wide ones.
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { isMac, shortcut } from "../lib/shortcuts";
 
 export type CommandGroup = "Actions" | "Layers" | "Files" | "Stacks" | "Go to";
 export const GROUP_ORDER: CommandGroup[] = ["Actions", "Layers", "Files", "Stacks", "Go to"];
@@ -70,5 +71,5 @@ export function useCollectCommands(): () => Command[] {
   return useRegistry().collect;
 }
 
-export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-export const PALETTE_SHORTCUT = isMac ? "⌘K" : "Ctrl+K";
+export { isMac };
+export const PALETTE_SHORTCUT = shortcut("K");
