@@ -2,12 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 use crate::platform;
+use crate::store::Store;
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
+use tauri::State;
 
 const SERVICE: &str = "stack-reviewer";
 /// The single entry older versions stored the one token in; migrated to a per-login entry.
 const LEGACY_ACCOUNT: &str = "github";
-/// Holds the account index (logins and how each signs in, never tokens).
+/// Where older versions kept the account index; moved to state.db on first start (see `load_index`).
 const INDEX_ACCOUNT: &str = "accounts-index";
 
 fn entry(account: &str) -> Result<keyring::Entry, String> {
@@ -113,17 +117,72 @@ fn check_login(login: &str) -> Result<(), String> {
 
 static INDEX_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-fn load_index() -> Result<AccountIndex, String> {
-    match read_entry(INDEX_ACCOUNT)? {
-        // An unreadable index must not lock the user out: treat it as empty.
-        Some(raw) => Ok(serde_json::from_str(&raw).unwrap_or_default()),
-        None => Ok(AccountIndex::default()),
-    }
+// The index holds no secrets (logins and how each signs in), so it lives in state.db rather than
+// the keychain. On macOS every keychain read can ask for the login password, and an unsigned
+// build is a new app to the keychain each time, so the keychain is kept for tokens only.
+// The webview's durable store never loads this namespace.
+const INDEX_NS: &str = "accounts";
+const INDEX_KEY: &str = "index";
+
+fn load_index(store: &Store) -> Result<AccountIndex, String> {
+    load_index_with(store, || read_entry(INDEX_ACCOUNT), || delete_entry(INDEX_ACCOUNT))
 }
 
-fn store_index(index: &AccountIndex) -> Result<(), String> {
+/// Reads the index from the store. The first time (after upgrading from a version that kept it in
+/// the keychain) it is moved over from `old`, once. If the old entry can't be read (the user
+/// denied the keychain prompt), nothing is written, so the move is tried again next start.
+fn load_index_with(
+    store: &Store,
+    old: impl FnOnce() -> Result<Option<String>, String>,
+    forget_old: impl FnOnce() -> Result<(), String>,
+) -> Result<AccountIndex, String> {
+    if let Some(raw) = store.get(INDEX_NS, INDEX_KEY)? {
+        // An unreadable index must not lock the user out: treat it as empty.
+        return Ok(serde_json::from_str(&raw).unwrap_or_default());
+    }
+    let had_old = old()?;
+    let index = had_old.as_deref().map(|raw| serde_json::from_str(raw).unwrap_or_default()).unwrap_or_default();
+    store_index(store, &index)?;
+    if had_old.is_some() {
+        let _ = forget_old(); // best effort: the store's copy now wins either way
+    }
+    Ok(index)
+}
+
+fn store_index(store: &Store, index: &AccountIndex) -> Result<(), String> {
     let raw = serde_json::to_string(index).map_err(|e| e.to_string())?;
-    entry(INDEX_ACCOUNT)?.set_password(&raw).map_err(|e| e.to_string())
+    store.set(INDEX_NS, INDEX_KEY, &raw)
+}
+
+/// Keychain tokens already read this launch, by lowercased login, so each is read (and on macOS
+/// possibly prompted for) at most once per run.
+static TOKENS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+
+fn tokens() -> std::sync::MutexGuard<'static, HashMap<String, String>> {
+    TOKENS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn read_token(login: &str) -> Result<Option<String>, String> {
+    let key = login.to_ascii_lowercase();
+    if let Some(t) = tokens().get(&key) {
+        return Ok(Some(t.clone()));
+    }
+    let t = read_entry(&token_account(login))?;
+    if let Some(t) = &t {
+        tokens().insert(key, t.clone());
+    }
+    Ok(t)
+}
+
+fn save_token(login: &str, token: &str) -> Result<(), String> {
+    entry(&token_account(login))?.set_password(token).map_err(|e| e.to_string())?;
+    tokens().insert(login.to_ascii_lowercase(), token.to_string());
+    Ok(())
+}
+
+fn forget_token(login: &str) -> Result<(), String> {
+    tokens().remove(&login.to_ascii_lowercase());
+    delete_entry(&token_account(login))
 }
 
 /// Looks up the login a token belongs to (used once, to migrate the pre-accounts single token).
@@ -147,18 +206,19 @@ async fn login_for_token(token: &str) -> Result<String, String> {
 /// The app's accounts. On the first start after an upgrade this moves the old single token under
 /// its login. If GitHub can't be reached the old token stays put and the migration retries next start.
 #[tauri::command]
-pub async fn auth_accounts() -> Result<AccountIndex, String> {
+pub async fn auth_accounts(store: State<'_, Store>) -> Result<AccountIndex, String> {
+    // Looking up an entry that doesn't exist never prompts, so this costs nothing once migrated.
     let legacy = read_entry(LEGACY_ACCOUNT)?;
     if let Some(token) = legacy {
         match login_for_token(&token).await {
             Ok(login) if valid_login(&login) => {
                 let _g = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-                let mut index = load_index()?;
-                if read_entry(&token_account(&login))?.is_none() {
-                    entry(&token_account(&login))?.set_password(token.trim()).map_err(|e| e.to_string())?;
+                let mut index = load_index(&store)?;
+                if read_token(&login)?.is_none() {
+                    save_token(&login, token.trim())?;
                 }
                 index.adopt_legacy(&login);
-                store_index(&index)?;
+                store_index(&store, &index)?;
                 delete_entry(LEGACY_ACCOUNT)?;
                 return Ok(index);
             }
@@ -169,60 +229,61 @@ pub async fn auth_accounts() -> Result<AccountIndex, String> {
         }
     }
     let _g = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    load_index()
+    load_index(&store)
 }
 
-/// The token for an account: fresh from `gh` for gh accounts, otherwise from the keychain.
+/// The token for an account: fresh from `gh` for gh accounts, otherwise from the keychain
+/// (read once per launch).
 #[tauri::command]
-pub async fn auth_account_token(login: String) -> Result<Option<String>, String> {
+pub async fn auth_account_token(store: State<'_, Store>, login: String) -> Result<Option<String>, String> {
     check_login(&login)?;
     let via = {
         let _g = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        load_index()?.accounts.iter().find(|a| a.login.eq_ignore_ascii_case(&login)).map(|a| a.via)
+        load_index(&store)?.accounts.iter().find(|a| a.login.eq_ignore_ascii_case(&login)).map(|a| a.via)
     };
     match via {
         None => Ok(None),
         Some(Via::Gh) => auth_gh_token(login).await.map(Some),
-        Some(_) => read_entry(&token_account(&login)),
+        Some(_) => read_token(&login),
     }
 }
 
 /// Remembers an account and makes it current. Device and token accounts store their token in the
 /// keychain under the login; gh accounts store nothing (the token is read from gh when needed).
 #[tauri::command]
-pub fn auth_account_save(login: String, via: Via, token: Option<String>) -> Result<AccountIndex, String> {
+pub fn auth_account_save(store: State<'_, Store>, login: String, via: Via, token: Option<String>) -> Result<AccountIndex, String> {
     check_login(&login)?;
     let _g = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     match (via, token) {
-        (Via::Gh, _) => delete_entry(&token_account(&login))?,
-        (_, Some(t)) if !t.trim().is_empty() => entry(&token_account(&login))?.set_password(t.trim()).map_err(|e| e.to_string())?,
+        (Via::Gh, _) => forget_token(&login)?,
+        (_, Some(t)) if !t.trim().is_empty() => save_token(&login, t.trim())?,
         _ => return Err("a token is required for this kind of account".into()),
     }
-    let mut index = load_index()?;
+    let mut index = load_index(&store)?;
     index.upsert(&login, via);
-    store_index(&index)?;
+    store_index(&store, &index)?;
     Ok(index)
 }
 
 #[tauri::command]
-pub fn auth_account_select(login: String) -> Result<AccountIndex, String> {
+pub fn auth_account_select(store: State<'_, Store>, login: String) -> Result<AccountIndex, String> {
     check_login(&login)?;
     let _g = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut index = load_index()?;
+    let mut index = load_index(&store)?;
     index.select(&login)?;
-    store_index(&index)?;
+    store_index(&store, &index)?;
     Ok(index)
 }
 
 /// Forgets an account in this app only: its keychain token and index entry. gh is not touched.
 #[tauri::command]
-pub fn auth_account_remove(login: String) -> Result<AccountIndex, String> {
+pub fn auth_account_remove(store: State<'_, Store>, login: String) -> Result<AccountIndex, String> {
     check_login(&login)?;
     let _g = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    delete_entry(&token_account(&login))?;
-    let mut index = load_index()?;
+    forget_token(&login)?;
+    let mut index = load_index(&store)?;
     index.remove(&login);
-    store_index(&index)?;
+    store_index(&store, &index)?;
     Ok(index)
 }
 
@@ -454,6 +515,57 @@ mod tests {
         let mut i = AccountIndex::default();
         i.upsert("alex-r", Via::Gh);
         assert_eq!(serde_json::to_string(&i).unwrap(), r#"{"accounts":[{"login":"alex-r","via":"gh"}],"current":"alex-r"}"#);
+    }
+
+    fn tmp_store(name: &str) -> (Store, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("stack-reviewer-auth-{name}-{}", uuid::Uuid::new_v4()));
+        (Store::open(&dir.join("state.db")).unwrap(), dir)
+    }
+
+    #[test]
+    fn index_moves_from_keychain_once() {
+        let (store, dir) = tmp_store("move");
+        let old = r#"{"accounts":[{"login":"alex-r","via":"gh"},{"login":"priya-k","via":"token"}],"current":"priya-k"}"#;
+        let forgot = std::cell::Cell::new(0);
+        let i = load_index_with(&store, || Ok(Some(old.to_string())), || { forgot.set(forgot.get() + 1); Ok(()) }).unwrap();
+        assert_eq!(i.accounts.len(), 2);
+        assert_eq!(i.current.as_deref(), Some("priya-k"));
+        assert_eq!(forgot.get(), 1);
+        // From now on the keychain isn't consulted at all.
+        let again = load_index_with(&store, || panic!("read the keychain again"), || panic!("forgot again")).unwrap();
+        assert_eq!(again, i);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn index_without_keychain_entry_is_empty_and_settled() {
+        let (store, dir) = tmp_store("empty");
+        let i = load_index_with(&store, || Ok(None), || panic!("nothing to forget")).unwrap();
+        assert_eq!(i, AccountIndex::default());
+        // An empty index is written, so a fresh install never looks in the keychain again.
+        assert!(store.get(INDEX_NS, INDEX_KEY).unwrap().is_some());
+        load_index_with(&store, || panic!("read the keychain again"), || Ok(())).unwrap();
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn denied_keychain_read_retries_next_start() {
+        let (store, dir) = tmp_store("denied");
+        assert!(load_index_with(&store, || Err("User canceled the operation".into()), || Ok(())).is_err());
+        assert!(store.get(INDEX_NS, INDEX_KEY).unwrap().is_none());
+        let i = load_index_with(&store, || Ok(Some(r#"{"accounts":[{"login":"alex-r","via":"gh"}],"current":"alex-r"}"#.into())), || Ok(())).unwrap();
+        assert_eq!(i.current.as_deref(), Some("alex-r"));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn store_index_round_trips() {
+        let (store, dir) = tmp_store("rt");
+        let mut i = AccountIndex::default();
+        i.upsert("alex-r", Via::Device);
+        store_index(&store, &i).unwrap();
+        assert_eq!(load_index_with(&store, || panic!("keychain"), || Ok(())).unwrap(), i);
+        std::fs::remove_dir_all(dir).ok();
     }
 
     /// Run by hand against the real gh CLI: `cargo test real_gh -- --ignored --nocapture`. Prints logins only.

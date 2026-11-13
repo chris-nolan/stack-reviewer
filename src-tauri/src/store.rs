@@ -96,6 +96,15 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    pub fn get(&self, ns: &str, key: &str) -> Result<Option<String>, String> {
+        let conn = self.0.lock().map_err(|e| e.to_string())?;
+        match conn.query_row("SELECT value FROM kv WHERE ns = ?1 AND key = ?2", params![ns, key], |r| r.get::<_, String>(0)) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
     pub fn delete(&self, ns: &str, key: &str) -> Result<(), String> {
         self.0
             .lock()

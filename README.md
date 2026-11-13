@@ -18,7 +18,9 @@ Sign-in options (you can add several accounts and switch between them from the a
 - **Personal access token**: needs `repo` and `read:org`.
 - **Sign in with GitHub** (device flow): appears once an org-owned OAuth app exists. Set `VITE_GITHUB_CLIENT_ID` at build time to enable it.
 
-Device and token accounts are stored in the OS keychain, one entry per login (`stack-reviewer` / `github:<login>`), plus an index entry (`accounts-index`) with the logins, how each signs in and which is current. A token saved by an older version is moved under its login on first start. Removing an account ("Sign out of <login>") only forgets it in the app.
+Device and token accounts keep their token in the OS keychain, one entry per login (`stack-reviewer` / `github:<login>`), read at most once per launch. gh accounts keep nothing there. The list of accounts (logins, how each signs in, which is current) holds no secrets, so it lives in `state.db`; older versions kept it in the keychain as `accounts-index`, and it is moved over on first start. A token saved by an older version is moved under its login the same way. Removing an account ("Sign out of <login>") only forgets it in the app.
+
+On macOS the keychain asks for your login password when an app it doesn't recognise reads an entry (Touch ID isn't offered for these prompts). Builds aren't code-signed yet, so each new build counts as a new app: choose **Always Allow** and you'll be asked once per build, and only if you use device or token accounts.
 
 Drafts, guides, pins, "seen" state and agent chats are kept per account, and agents (and their checkouts) are never shared between accounts. If an org requires SAML SSO and the account's token isn't authorised for it, the inbox says so and links to GitHub to authorise it.
 
